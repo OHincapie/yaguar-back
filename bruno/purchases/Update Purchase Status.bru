@@ -1,0 +1,21 @@
+meta {
+  name: Update Purchase Status
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/purchases/OC-3401/status
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "status": "en camino"
+  }
+}

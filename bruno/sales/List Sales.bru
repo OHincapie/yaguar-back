@@ -1,0 +1,21 @@
+meta {
+  name: List Sales
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/sales
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+query {
+  page: 1
+  ~status: pendiente
+  ~customer: CLI-001
+}

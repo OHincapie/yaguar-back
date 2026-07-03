@@ -1,0 +1,22 @@
+meta {
+  name: Adjust Inventory
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/inventory/TEC-1180/adjust
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "qty": 10,
+    "notes": "Conteo físico mensual"
+  }
+}

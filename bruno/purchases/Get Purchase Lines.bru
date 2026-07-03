@@ -1,0 +1,15 @@
+meta {
+  name: Get Purchase Lines
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/purchases/OC-3401/lines
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}

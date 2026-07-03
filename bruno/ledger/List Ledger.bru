@@ -1,0 +1,20 @@
+meta {
+  name: List Ledger
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/ledger
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+query {
+  page: 1
+  ~cat: Ventas
+}

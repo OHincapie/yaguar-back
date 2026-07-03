@@ -1,0 +1,15 @@
+meta {
+  name: Receive Purchase
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/api/purchases/OC-3401/receive
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}

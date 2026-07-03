@@ -1,0 +1,51 @@
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from src.domains.auth.router import router as auth_router
+from src.domains.customers.router import router as customers_router
+from src.domains.dashboard.router import router as dashboard_router
+from src.domains.inventory.router import router as inventory_router
+from src.domains.ledger.router import router as ledger_router
+from src.domains.pos.router import router as pos_router
+from src.domains.products.router import categories_router, router as products_router
+from src.domains.purchases.router import router as purchases_router
+from src.domains.sales.router import router as sales_router
+from src.domains.suppliers.router import router as suppliers_router
+from src.shared.middleware.errors import register_error_handlers
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+
+
+app = FastAPI(
+    title="Yaguar ERP API",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+register_error_handlers(app)
+
+API_PREFIX = "/api"
+app.include_router(auth_router, prefix=API_PREFIX)
+app.include_router(products_router, prefix=API_PREFIX)
+app.include_router(categories_router, prefix=API_PREFIX)
+app.include_router(inventory_router, prefix=API_PREFIX)
+app.include_router(suppliers_router, prefix=API_PREFIX)
+app.include_router(purchases_router, prefix=API_PREFIX)
+app.include_router(customers_router, prefix=API_PREFIX)
+app.include_router(sales_router, prefix=API_PREFIX)
+app.include_router(ledger_router, prefix=API_PREFIX)
+app.include_router(pos_router, prefix=API_PREFIX)
+app.include_router(dashboard_router, prefix=API_PREFIX)

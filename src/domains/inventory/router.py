@@ -1,0 +1,66 @@
+from datetime import datetime
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from src.domains.inventory.models import MovementType
+from src.domains.inventory.repository import InventoryRepository
+from src.domains.inventory.schemas import InventoryAdjust, InventoryLevelRead, InventoryMovementRead
+from src.domains.inventory.service import InventoryService
+from src.shared.database import get_session
+from src.shared.middleware.auth import CurrentUser
+from src.shared.types import PaginatedResponse
+
+router = APIRouter(prefix="/inventory", tags=["inventory"])
+
+
+def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> InventoryService:
+    return InventoryService(InventoryRepository(session))
+
+
+@router.get("", response_model=PaginatedResponse[InventoryLevelRead])
+async def list_inventory(
+    _: CurrentUser,
+    service: Annotated[InventoryService, Depends(get_service)],
+    below_min: bool = False,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+):
+    levels, total = await service.list_levels(below_min=below_min, page=page, page_size=page_size)
+    pages = (total + page_size - 1) // page_size
+    data = [
+        InventoryLevelRead(**level.model_dump(), is_below_min=level.stock_qty <= level.min_stock)
+        for level in levels
+    ]
+    return PaginatedResponse(data=data, total=total, page=page, page_size=page_size, pages=pages)
+
+
+@router.get("/movements", response_model=PaginatedResponse[InventoryMovementRead])
+async def list_movements(
+    _: CurrentUser,
+    service: Annotated[InventoryService, Depends(get_service)],
+    sku: str | None = None,
+    type: MovementType | None = None,
+    from_date: datetime | None = None,
+    to_date: datetime | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+):
+    movements, total = await service.list_movements(
+        product_sku=sku, type=type, from_date=from_date, to_date=to_date, page=page, page_size=page_size,
+    )
+    pages = (total + page_size - 1) // page_size
+    return PaginatedResponse(data=movements, total=total, page=page, page_size=page_size, pages=pages)
+
+
+@router.get("/{sku}", response_model=InventoryLevelRead)
+async def get_level(_: CurrentUser, sku: str, service: Annotated[InventoryService, Depends(get_service)]):
+    level = await service.get_level(sku)
+    return InventoryLevelRead(**level.model_dump(), is_below_min=level.stock_qty <= level.min_stock)
+
+
+@router.post("/{sku}/adjust", response_model=InventoryLevelRead)
+async def adjust_inventory(_: CurrentUser, sku: str, data: InventoryAdjust, service: Annotated[InventoryService, Depends(get_service)]):
+    level = await service.adjust(sku, data.qty, data.notes)
+    return InventoryLevelRead(**level.model_dump(), is_below_min=level.stock_qty <= level.min_stock)

@@ -1,0 +1,21 @@
+meta {
+  name: List Purchases
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/purchases
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+query {
+  page: 1
+  ~status: en camino
+  ~supplier: SUP-001
+}

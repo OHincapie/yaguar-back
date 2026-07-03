@@ -1,0 +1,22 @@
+meta {
+  name: Update Customer
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/customers/CLI-001
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "status": "vip",
+    "saldo": 0.0
+  }
+}

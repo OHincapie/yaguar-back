@@ -1,0 +1,15 @@
+meta {
+  name: Get Inventory Level
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/inventory/TEC-1180
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}

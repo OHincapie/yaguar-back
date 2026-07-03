@@ -1,0 +1,37 @@
+meta {
+  name: Checkout (POS)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/pos/checkout
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "sale_id": "V-10502",
+    "customer_id": "CLI-003",
+    "payment_method": "Efectivo",
+    "lines": [
+      {
+        "product_sku": "HOG-2130",
+        "qty": 2,
+        "unit_price": 95.00,
+        "unit_cost": 54.00
+      },
+      {
+        "product_sku": "LIM-1090",
+        "qty": 3,
+        "unit_price": 28.50,
+        "unit_cost": 14.00
+      }
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+meta {
+  name: Create Purchase
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/purchases
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "id": "OC-3401",
+    "supplier_id": "SUP-001",
+    "eta": "2026-06-20",
+    "notes": "Pedido urgente",
+    "lines": [
+      {
+        "product_sku": "TEC-1180",
+        "qty": 20,
+        "unit_cost": 52.00
+      },
+      {
+        "product_sku": "TEC-3310",
+        "qty": 15,
+        "unit_cost": 24.00
+      }
+    ]
+  }
+}

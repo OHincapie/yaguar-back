@@ -1,0 +1,23 @@
+meta {
+  name: Update Supplier
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/suppliers/SUP-001
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "rating": 4.9,
+    "saldo": 8000.0,
+    "status": "al día"
+  }
+}

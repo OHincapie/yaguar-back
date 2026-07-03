@@ -1,0 +1,15 @@
+meta {
+  name: Get Purchase
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/purchases/OC-3401
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}

@@ -1,0 +1,27 @@
+meta {
+  name: Create Product
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/products
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "sku": "TEC-9999",
+    "name": "Nuevo Producto Test",
+    "category_id": "TEC",
+    "price": 99.90,
+    "cost": 55.00,
+    "supplier_id": "SUP-001",
+    "unit": "und"
+  }
+}

@@ -1,0 +1,21 @@
+meta {
+  name: Update Sale Status
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/sales/V-10501/status
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "status": "pagado"
+  }
+}

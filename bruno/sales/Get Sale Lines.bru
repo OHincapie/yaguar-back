@@ -1,0 +1,15 @@
+meta {
+  name: Get Sale Lines
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/sales/V-10501/lines
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}

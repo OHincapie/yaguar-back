@@ -1,0 +1,25 @@
+meta {
+  name: Create Entry
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/ledger
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "concept": "Pago servicios generales",
+    "category": "Gastos",
+    "debit": 850.00,
+    "credit": 0.0,
+    "type": "out"
+  }
+}

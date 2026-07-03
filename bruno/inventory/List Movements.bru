@@ -1,0 +1,22 @@
+meta {
+  name: List Movements
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/inventory/movements
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+query {
+  page: 1
+  page_size: 50
+  ~sku: TEC-1180
+  ~type: salida
+}

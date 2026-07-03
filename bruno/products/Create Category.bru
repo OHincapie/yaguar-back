@@ -1,0 +1,23 @@
+meta {
+  name: Create Category
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/api/categories
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "id": "ELE",
+    "name": "Electrónica",
+    "color": "#6366F1"
+  }
+}

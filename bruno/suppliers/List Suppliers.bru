@@ -1,0 +1,20 @@
+meta {
+  name: List Suppliers
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/suppliers
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+query {
+  page: 1
+  ~status: al día
+}

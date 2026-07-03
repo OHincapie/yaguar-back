@@ -1,0 +1,38 @@
+meta {
+  name: Create Sale
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/sales
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "id": "V-10501",
+    "customer_id": "CLI-001",
+    "payment_method": "Crédito",
+    "status": "pendiente",
+    "lines": [
+      {
+        "product_sku": "TEC-1180",
+        "qty": 5,
+        "unit_price": 89.90,
+        "unit_cost": 52.00
+      },
+      {
+        "product_sku": "TEC-2240",
+        "qty": 10,
+        "unit_price": 18.50,
+        "unit_cost": 8.20
+      }
+    ]
+  }
+}

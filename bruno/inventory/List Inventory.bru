@@ -1,0 +1,21 @@
+meta {
+  name: List Inventory
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/inventory
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+query {
+  page: 1
+  page_size: 50
+  ~below_min: true
+}

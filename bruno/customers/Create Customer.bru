@@ -1,0 +1,26 @@
+meta {
+  name: Create Customer
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/customers
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "id": "CLI-007",
+    "name": "Distribuidora Sur",
+    "type": "Mayorista",
+    "city": "Lima",
+    "status": "activo",
+    "saldo": 0.0
+  }
+}

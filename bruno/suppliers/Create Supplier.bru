@@ -1,0 +1,29 @@
+meta {
+  name: Create Supplier
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/suppliers
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{authToken}}
+}
+
+body:json {
+  {
+    "id": "SUP-007",
+    "name": "Nuevo Proveedor",
+    "contact": "Juan Pérez",
+    "categories": ["TEC"],
+    "rating": 4.0,
+    "lead_days": 7,
+    "saldo": 0.0,
+    "status": "al día",
+    "on_time_pct": 95.0
+  }
+}

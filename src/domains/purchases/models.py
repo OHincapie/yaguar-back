@@ -1,0 +1,36 @@
+from datetime import date as Date
+from datetime import datetime, timezone
+from enum import StrEnum
+from typing import Optional
+
+from sqlmodel import Field, SQLModel
+
+
+class PurchaseStatus(StrEnum):
+    BORRADOR = "borrador"
+    EN_CAMINO = "en camino"
+    ADUANA = "aduana"
+    RECIBIDO = "recibido"
+    CANCELADO = "cancelado"
+
+
+class Purchase(SQLModel, table=True):
+    __tablename__ = "purchases"
+
+    id: str = Field(primary_key=True, max_length=50)
+    supplier_id: str = Field(foreign_key="suppliers.id", max_length=50)
+    date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    total: float = Field(default=0.0)
+    status: PurchaseStatus = Field(default=PurchaseStatus.BORRADOR)
+    eta: Optional[Date] = Field(default=None)
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+
+class PurchaseLine(SQLModel, table=True):
+    __tablename__ = "purchase_lines"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    purchase_id: str = Field(foreign_key="purchases.id", max_length=50)
+    product_sku: str = Field(foreign_key="products.sku", max_length=50)
+    qty: float
+    unit_cost: float
