@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.domains.customers.models import Customer, CustomerStatus, CustomerType

@@ -1,6 +1,6 @@
 from enum import StrEnum
 
-from sqlmodel import Column, Field, SQLModel
+from sqlmodel import AutoString, Column, Field, SQLModel
 from sqlalchemy import JSON
 
 
@@ -20,6 +20,6 @@ class Supplier(SQLModel, table=True):
     rating: float = Field(default=0.0)
     lead_days: int = Field(default=0)
     saldo: float = Field(default=0.0)
-    status: SupplierStatus = Field(default=SupplierStatus.AL_DIA)
+    status: SupplierStatus = Field(default=SupplierStatus.AL_DIA, sa_type=AutoString)
     on_time_pct: float = Field(default=100.0)
     orders_count: int = Field(default=0)

@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Optional
 
-from sqlmodel import Field, SQLModel
+from sqlalchemy import DateTime
+from sqlmodel import AutoString, Field, SQLModel
 
 
 class PurchaseStatus(StrEnum):
@@ -19,9 +20,9 @@ class Purchase(SQLModel, table=True):
 
     id: str = Field(primary_key=True, max_length=50)
     supplier_id: str = Field(foreign_key="suppliers.id", max_length=50)
-    date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_type=DateTime(timezone=True))
     total: float = Field(default=0.0)
-    status: PurchaseStatus = Field(default=PurchaseStatus.BORRADOR)
+    status: PurchaseStatus = Field(default=PurchaseStatus.BORRADOR, sa_type=AutoString)
     eta: Optional[Date] = Field(default=None)
     notes: Optional[str] = Field(default=None, max_length=500)
 

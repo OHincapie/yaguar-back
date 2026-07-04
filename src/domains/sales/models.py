@@ -2,7 +2,8 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Optional
 
-from sqlmodel import Field, SQLModel
+from sqlalchemy import DateTime
+from sqlmodel import AutoString, Field, SQLModel
 
 
 class PaymentMethod(StrEnum):
@@ -24,10 +25,10 @@ class Sale(SQLModel, table=True):
 
     id: str = Field(primary_key=True, max_length=50)
     customer_id: str = Field(foreign_key="customers.id", max_length=50)
-    date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_type=DateTime(timezone=True))
     total: float = Field(default=0.0)
-    payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO)
-    status: SaleStatus = Field(default=SaleStatus.PENDIENTE)
+    payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO, sa_type=AutoString)
+    status: SaleStatus = Field(default=SaleStatus.PENDIENTE, sa_type=AutoString)
     notes: Optional[str] = Field(default=None, max_length=500)
 
 

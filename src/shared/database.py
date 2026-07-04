@@ -20,5 +20,11 @@ async def init_db() -> None:
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    async with AsyncSession(engine) as session:
+    # expire_on_commit=False: several request handlers (e.g. POS checkout)
+    # commit more than once per request (inventory, sale, ledger). With the
+    # default expire-on-commit behavior, an object read after a *later*
+    # commit raises MissingGreenlet when FastAPI serializes the response,
+    # since attribute access would need to lazily re-fetch outside of an
+    # awaited context.
+    async with AsyncSession(engine, expire_on_commit=False) as session:
         yield session
