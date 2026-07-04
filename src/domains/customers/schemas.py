@@ -4,7 +4,7 @@ from src.domains.customers.models import CustomerStatus, CustomerType
 
 
 class CustomerCreate(BaseModel):
-    id: str
+    code: str
     name: str
     type: CustomerType
     city: str
@@ -22,6 +22,7 @@ class CustomerUpdate(BaseModel):
 
 class CustomerRead(BaseModel):
     id: str
+    code: str
     name: str
     type: CustomerType
     city: str

@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.domains.auth.router import router as auth_router
+from src.domains.accounts.router import router as auth_router
 from src.domains.customers.router import router as customers_router
 from src.domains.dashboard.router import router as dashboard_router
 from src.domains.inventory.router import router as inventory_router
@@ -14,6 +14,7 @@ from src.domains.purchases.router import router as purchases_router
 from src.domains.sales.router import router as sales_router
 from src.domains.suppliers.router import router as suppliers_router
 from src.shared.middleware.errors import register_error_handlers
+from src.shared.settings import settings
 
 
 @asynccontextmanager
@@ -29,7 +30,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins_list,
+    allow_origin_regex=settings.cors_allowed_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

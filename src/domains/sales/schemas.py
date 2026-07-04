@@ -6,7 +6,7 @@ from src.domains.sales.models import PaymentMethod, SaleStatus
 
 
 class SaleLineCreate(BaseModel):
-    product_sku: str
+    product_id: str
     qty: float
     unit_price: float
     unit_cost: float
@@ -15,7 +15,7 @@ class SaleLineCreate(BaseModel):
 class SaleLineRead(BaseModel):
     id: int
     sale_id: str
-    product_sku: str
+    product_id: str
     qty: float
     unit_price: float
     unit_cost: float
@@ -24,7 +24,6 @@ class SaleLineRead(BaseModel):
 
 
 class SaleCreate(BaseModel):
-    id: str
     customer_id: str
     payment_method: PaymentMethod = PaymentMethod.EFECTIVO
     status: SaleStatus = SaleStatus.PENDIENTE
@@ -38,6 +37,7 @@ class SaleStatusUpdate(BaseModel):
 
 class SaleRead(BaseModel):
     id: str
+    code: str
     customer_id: str
     date: datetime
     total: float

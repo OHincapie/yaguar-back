@@ -20,9 +20,10 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 @router.get("/kpis", response_model=KpiPanel)
 async def get_kpis(
-    _: CurrentUser,
+    current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_session)],
 ):
+    company_id = current_user.company_id
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_start = today_start - timedelta(days=now.weekday())
@@ -31,6 +32,7 @@ async def get_kpis(
     async def sum_sales(from_dt: datetime) -> float:
         result = await session.exec(  # type: ignore
             select(func.coalesce(func.sum(Sale.total), 0)).where(
+                Sale.company_id == company_id,
                 Sale.date >= from_dt,
                 Sale.status != SaleStatus.CANCELADO,
             )
@@ -41,18 +43,25 @@ async def get_kpis(
     sales_week = await sum_sales(week_start)
     sales_month = await sum_sales(month_start)
 
-    receivables_result = await session.exec(select(func.coalesce(func.sum(Customer.saldo), 0)))  # type: ignore
+    receivables_result = await session.exec(  # type: ignore
+        select(func.coalesce(func.sum(Customer.saldo), 0)).where(Customer.company_id == company_id)
+    )
     receivables = float(receivables_result.one())
 
-    payables_result = await session.exec(select(func.coalesce(func.sum(Supplier.saldo), 0)))  # type: ignore
+    payables_result = await session.exec(  # type: ignore
+        select(func.coalesce(func.sum(Supplier.saldo), 0)).where(Supplier.company_id == company_id)
+    )
     payables = float(payables_result.one())
 
     critical_result = await session.exec(  # type: ignore
-        select(func.count()).where(InventoryLevel.stock_qty <= InventoryLevel.min_stock)
+        select(func.count()).where(
+            InventoryLevel.company_id == company_id,
+            InventoryLevel.stock_qty <= InventoryLevel.min_stock,
+        )
     )
     critical_stock_count = int(critical_result.one())
 
-    products_result = await session.exec(select(Product))  # type: ignore
+    products_result = await session.exec(select(Product).where(Product.company_id == company_id))  # type: ignore
     products = products_result.all()
     if products:
         margins = [(p.price - p.cost) / p.price * 100 for p in products if p.price > 0]

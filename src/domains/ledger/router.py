@@ -21,7 +21,7 @@ def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> Ledge
 
 @router.get("", response_model=PaginatedResponse[LedgerEntryRead])
 async def list_entries(
-    _: CurrentUser,
+    current_user: CurrentUser,
     service: Annotated[LedgerService, Depends(get_service)],
     cat: LedgerCategory | None = None,
     from_date: datetime | None = None,
@@ -29,11 +29,13 @@ async def list_entries(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
 ):
-    entries, total = await service.list_entries(category=cat, from_date=from_date, to_date=to_date, page=page, page_size=page_size)
+    entries, total = await service.list_entries(
+        current_user.company_id, category=cat, from_date=from_date, to_date=to_date, page=page, page_size=page_size
+    )
     pages = (total + page_size - 1) // page_size
     return PaginatedResponse(data=entries, total=total, page=page, page_size=page_size, pages=pages)
 
 
 @router.post("", response_model=LedgerEntryRead, status_code=201)
-async def create_entry(_: CurrentUser, data: LedgerEntryCreate, service: Annotated[LedgerService, Depends(get_service)]):
-    return await service.create_entry(data)
+async def create_entry(current_user: CurrentUser, data: LedgerEntryCreate, service: Annotated[LedgerService, Depends(get_service)]):
+    return await service.create_entry(current_user.company_id, data)

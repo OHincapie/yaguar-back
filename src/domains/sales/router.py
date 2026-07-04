@@ -28,7 +28,7 @@ def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> SaleS
 
 @router.get("", response_model=PaginatedResponse[SaleRead])
 async def list_sales(
-    _: CurrentUser,
+    current_user: CurrentUser,
     service: Annotated[SaleService, Depends(get_service)],
     status: SaleStatus | None = None,
     customer: str | None = None,
@@ -38,7 +38,7 @@ async def list_sales(
     page_size: int = Query(50, ge=1, le=200),
 ):
     sales, total = await service.list_sales(
-        status=status, customer_id=customer, from_date=from_date, to_date=to_date,
+        current_user.company_id, status=status, customer_id=customer, from_date=from_date, to_date=to_date,
         page=page, page_size=page_size,
     )
     pages = (total + page_size - 1) // page_size
@@ -46,20 +46,20 @@ async def list_sales(
 
 
 @router.post("", response_model=SaleRead, status_code=201)
-async def create_sale(_: CurrentUser, data: SaleCreate, service: Annotated[SaleService, Depends(get_service)]):
-    return await service.create_sale(data)
+async def create_sale(current_user: CurrentUser, data: SaleCreate, service: Annotated[SaleService, Depends(get_service)]):
+    return await service.create_sale(current_user.company_id, data)
 
 
-@router.get("/{id}", response_model=SaleRead)
-async def get_sale(_: CurrentUser, id: str, service: Annotated[SaleService, Depends(get_service)]):
-    return await service.get_sale(id)
+@router.get("/{code}", response_model=SaleRead)
+async def get_sale(current_user: CurrentUser, code: str, service: Annotated[SaleService, Depends(get_service)]):
+    return await service.get_sale(current_user.company_id, code)
 
 
-@router.put("/{id}/status", response_model=SaleRead)
-async def update_status(_: CurrentUser, id: str, data: SaleStatusUpdate, service: Annotated[SaleService, Depends(get_service)]):
-    return await service.update_status(id, data)
+@router.put("/{code}/status", response_model=SaleRead)
+async def update_status(current_user: CurrentUser, code: str, data: SaleStatusUpdate, service: Annotated[SaleService, Depends(get_service)]):
+    return await service.update_status(current_user.company_id, code, data)
 
 
-@router.get("/{id}/lines", response_model=list[SaleLineRead])
-async def get_lines(_: CurrentUser, id: str, service: Annotated[SaleService, Depends(get_service)]):
-    return await service.get_lines(id)
+@router.get("/{code}/lines", response_model=list[SaleLineRead])
+async def get_lines(current_user: CurrentUser, code: str, service: Annotated[SaleService, Depends(get_service)]):
+    return await service.get_lines(current_user.company_id, code)

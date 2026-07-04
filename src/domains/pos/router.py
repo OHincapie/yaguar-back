@@ -27,18 +27,17 @@ def get_sale_service(session: Annotated[AsyncSession, Depends(get_session)]) -> 
 
 @router.post("/checkout", response_model=CheckoutResponse, status_code=201)
 async def checkout(
-    _: CurrentUser,
+    current_user: CurrentUser,
     data: CheckoutRequest,
     service: Annotated[SaleService, Depends(get_sale_service)],
 ):
     sale_data = SaleCreate(
-        id=data.sale_id,
         customer_id=data.customer_id,
         payment_method=data.payment_method,
         status=SaleStatus.PAGADO if data.payment_method.value != "Crédito" else SaleStatus.PENDIENTE,
         notes=data.notes,
         lines=[SaleLineCreate(**line.model_dump()) for line in data.lines],
     )
-    sale = await service.create_sale(sale_data)
+    sale = await service.create_sale(current_user.company_id, sale_data)
     total = sum(line.qty * line.unit_price for line in data.lines)
     return CheckoutResponse(sale=sale, total=total, items_count=len(data.lines))

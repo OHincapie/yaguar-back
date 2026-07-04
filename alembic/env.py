@@ -5,6 +5,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
+from src.domains.accounts.models import Company, User, UserCompany  # noqa: F401
 from src.domains.customers.models import Customer  # noqa: F401
 from src.domains.inventory.models import InventoryLevel, InventoryMovement  # noqa: F401
 from src.domains.ledger.models import LedgerEntry  # noqa: F401

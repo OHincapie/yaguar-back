@@ -4,7 +4,7 @@ from src.domains.suppliers.models import SupplierStatus
 
 
 class SupplierCreate(BaseModel):
-    id: str
+    code: str
     name: str
     contact: str
     categories: list[str] = []
@@ -28,6 +28,7 @@ class SupplierUpdate(BaseModel):
 
 class SupplierRead(BaseModel):
     id: str
+    code: str
     name: str
     contact: str
     categories: list[str]

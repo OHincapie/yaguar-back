@@ -10,5 +10,14 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60 * 24  # 24h
     debug: bool = False
 
+    # Comma-separated list of exact allowed origins, plus a regex for Vercel
+    # preview deployments of the frontend (which get a unique URL per deploy).
+    cors_allowed_origins: str = "http://localhost:3000"
+    cors_allowed_origin_regex: str = r"https://yaguar-front.*\.vercel\.app"
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
+
 
 settings = Settings()

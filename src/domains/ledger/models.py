@@ -23,6 +23,7 @@ class LedgerEntry(SQLModel, table=True):
     __tablename__ = "ledger_entries"
 
     id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: str = Field(foreign_key="companies.id", max_length=36, index=True)
     date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_type=DateTime(timezone=True))
     concept: str = Field(max_length=300)
     category: LedgerCategory = Field(sa_type=AutoString)

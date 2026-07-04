@@ -10,27 +10,35 @@ class InventoryRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_level(self, product_sku: str) -> InventoryLevel | None:
+    async def get_level(self, company_id: str, product_id: str) -> InventoryLevel | None:
         result = await self.session.exec(  # type: ignore
-            select(InventoryLevel).where(InventoryLevel.product_sku == product_sku)
+            select(InventoryLevel).where(
+                InventoryLevel.company_id == company_id, InventoryLevel.product_id == product_id
+            )
         )
         return result.first()
 
-    async def get_all_levels(self, below_min: bool = False, offset: int = 0, limit: int = 50) -> tuple[list[InventoryLevel], int]:
-        query = select(InventoryLevel)
+    async def get_all_levels(
+        self, company_id: str, below_min: bool = False, offset: int = 0, limit: int = 50
+    ) -> tuple[list[InventoryLevel], int]:
+        query = select(InventoryLevel).where(InventoryLevel.company_id == company_id)
         if below_min:
             query = query.where(InventoryLevel.stock_qty <= InventoryLevel.min_stock)
 
-        count_result = await self.session.exec(select(InventoryLevel))  # type: ignore
+        count_result = await self.session.exec(query)  # type: ignore
         total = len(count_result.all())
 
         result = await self.session.exec(query.offset(offset).limit(limit))  # type: ignore
         return result.all(), total
 
-    async def upsert_level(self, product_sku: str, qty_delta: float, min_stock: float | None = None) -> InventoryLevel:
-        level = await self.get_level(product_sku)
+    async def upsert_level(
+        self, company_id: str, product_id: str, qty_delta: float, min_stock: float | None = None
+    ) -> InventoryLevel:
+        level = await self.get_level(company_id, product_id)
         if level is None:
-            level = InventoryLevel(product_sku=product_sku, stock_qty=qty_delta, min_stock=min_stock or 0.0)
+            level = InventoryLevel(
+                company_id=company_id, product_id=product_id, stock_qty=qty_delta, min_stock=min_stock or 0.0
+            )
         else:
             level.stock_qty += qty_delta
             if min_stock is not None:
@@ -41,10 +49,14 @@ class InventoryRepository:
         await self.session.refresh(level)
         return level
 
-    async def set_level(self, product_sku: str, stock_qty: float, min_stock: float | None = None) -> InventoryLevel:
-        level = await self.get_level(product_sku)
+    async def set_level(
+        self, company_id: str, product_id: str, stock_qty: float, min_stock: float | None = None
+    ) -> InventoryLevel:
+        level = await self.get_level(company_id, product_id)
         if level is None:
-            level = InventoryLevel(product_sku=product_sku, stock_qty=stock_qty, min_stock=min_stock or 0.0)
+            level = InventoryLevel(
+                company_id=company_id, product_id=product_id, stock_qty=stock_qty, min_stock=min_stock or 0.0
+            )
         else:
             level.stock_qty = stock_qty
             if min_stock is not None:
@@ -57,7 +69,8 @@ class InventoryRepository:
 
     async def add_movement(
         self,
-        product_sku: str,
+        company_id: str,
+        product_id: str,
         type: MovementType,
         qty: float,
         reference_id: str | None = None,
@@ -65,7 +78,8 @@ class InventoryRepository:
         notes: str | None = None,
     ) -> InventoryMovement:
         movement = InventoryMovement(
-            product_sku=product_sku,
+            company_id=company_id,
+            product_id=product_id,
             type=type,
             qty=qty,
             reference_id=reference_id,
@@ -79,16 +93,17 @@ class InventoryRepository:
 
     async def get_movements(
         self,
-        product_sku: str | None = None,
+        company_id: str,
+        product_id: str | None = None,
         type: MovementType | None = None,
         from_date: datetime | None = None,
         to_date: datetime | None = None,
         offset: int = 0,
         limit: int = 50,
     ) -> tuple[list[InventoryMovement], int]:
-        query = select(InventoryMovement)
-        if product_sku:
-            query = query.where(InventoryMovement.product_sku == product_sku)
+        query = select(InventoryMovement).where(InventoryMovement.company_id == company_id)
+        if product_id:
+            query = query.where(InventoryMovement.product_id == product_id)
         if type:
             query = query.where(InventoryMovement.type == type)
         if from_date:

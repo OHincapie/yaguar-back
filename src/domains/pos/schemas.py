@@ -5,14 +5,13 @@ from src.domains.sales.schemas import SaleRead
 
 
 class CheckoutLine(BaseModel):
-    product_sku: str
+    product_id: str
     qty: float
     unit_price: float
     unit_cost: float
 
 
 class CheckoutRequest(BaseModel):
-    sale_id: str
     customer_id: str
     payment_method: PaymentMethod = PaymentMethod.EFECTIVO
     lines: list[CheckoutLine]

@@ -18,6 +18,11 @@ class BusinessError(Exception):
         self.message = message
 
 
+class UnauthorizedError(Exception):
+    def __init__(self, message: str = "Unauthorized"):
+        self.message = message
+
+
 def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(NotFoundError)
     async def not_found_handler(request: Request, exc: NotFoundError) -> JSONResponse:
@@ -33,3 +38,7 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(BusinessError)
     async def business_handler(request: Request, exc: BusinessError) -> JSONResponse:
         return JSONResponse(status_code=422, content={"detail": exc.message})
+
+    @app.exception_handler(UnauthorizedError)
+    async def unauthorized_handler(request: Request, exc: UnauthorizedError) -> JSONResponse:
+        return JSONResponse(status_code=401, content={"detail": exc.message})

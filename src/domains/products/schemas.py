@@ -2,13 +2,14 @@ from pydantic import BaseModel
 
 
 class CategoryCreate(BaseModel):
-    id: str
+    code: str
     name: str
     color: str
 
 
 class CategoryRead(BaseModel):
     id: str
+    code: str
     name: str
     color: str
 
@@ -35,6 +36,7 @@ class ProductUpdate(BaseModel):
 
 
 class ProductRead(BaseModel):
+    id: str
     sku: str
     name: str
     category_id: str

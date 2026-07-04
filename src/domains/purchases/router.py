@@ -32,38 +32,40 @@ def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> Purch
 
 @router.get("", response_model=PaginatedResponse[PurchaseRead])
 async def list_purchases(
-    _: CurrentUser,
+    current_user: CurrentUser,
     service: Annotated[PurchaseService, Depends(get_service)],
     status: PurchaseStatus | None = None,
     supplier: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
 ):
-    purchases, total = await service.list_purchases(status=status, supplier_id=supplier, page=page, page_size=page_size)
+    purchases, total = await service.list_purchases(
+        current_user.company_id, status=status, supplier_id=supplier, page=page, page_size=page_size
+    )
     pages = (total + page_size - 1) // page_size
     return PaginatedResponse(data=purchases, total=total, page=page, page_size=page_size, pages=pages)
 
 
 @router.post("", response_model=PurchaseRead, status_code=201)
-async def create_purchase(_: CurrentUser, data: PurchaseCreate, service: Annotated[PurchaseService, Depends(get_service)]):
-    return await service.create_purchase(data)
+async def create_purchase(current_user: CurrentUser, data: PurchaseCreate, service: Annotated[PurchaseService, Depends(get_service)]):
+    return await service.create_purchase(current_user.company_id, data)
 
 
-@router.get("/{id}", response_model=PurchaseRead)
-async def get_purchase(_: CurrentUser, id: str, service: Annotated[PurchaseService, Depends(get_service)]):
-    return await service.get_purchase(id)
+@router.get("/{code}", response_model=PurchaseRead)
+async def get_purchase(current_user: CurrentUser, code: str, service: Annotated[PurchaseService, Depends(get_service)]):
+    return await service.get_purchase(current_user.company_id, code)
 
 
-@router.put("/{id}/status", response_model=PurchaseRead)
-async def update_status(_: CurrentUser, id: str, data: PurchaseStatusUpdate, service: Annotated[PurchaseService, Depends(get_service)]):
-    return await service.update_status(id, data)
+@router.put("/{code}/status", response_model=PurchaseRead)
+async def update_status(current_user: CurrentUser, code: str, data: PurchaseStatusUpdate, service: Annotated[PurchaseService, Depends(get_service)]):
+    return await service.update_status(current_user.company_id, code, data)
 
 
-@router.get("/{id}/lines", response_model=list[PurchaseLineRead])
-async def get_lines(_: CurrentUser, id: str, service: Annotated[PurchaseService, Depends(get_service)]):
-    return await service.get_lines(id)
+@router.get("/{code}/lines", response_model=list[PurchaseLineRead])
+async def get_lines(current_user: CurrentUser, code: str, service: Annotated[PurchaseService, Depends(get_service)]):
+    return await service.get_lines(current_user.company_id, code)
 
 
-@router.post("/{id}/receive", response_model=PurchaseRead)
-async def receive_purchase(_: CurrentUser, id: str, service: Annotated[PurchaseService, Depends(get_service)]):
-    return await service.receive(id)
+@router.post("/{code}/receive", response_model=PurchaseRead)
+async def receive_purchase(current_user: CurrentUser, code: str, service: Annotated[PurchaseService, Depends(get_service)]):
+    return await service.receive(current_user.company_id, code)

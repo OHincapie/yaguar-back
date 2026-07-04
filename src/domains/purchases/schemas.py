@@ -7,7 +7,7 @@ from src.domains.purchases.models import PurchaseStatus
 
 
 class PurchaseLineCreate(BaseModel):
-    product_sku: str
+    product_id: str
     qty: float
     unit_cost: float
 
@@ -15,7 +15,7 @@ class PurchaseLineCreate(BaseModel):
 class PurchaseLineRead(BaseModel):
     id: int
     purchase_id: str
-    product_sku: str
+    product_id: str
     qty: float
     unit_cost: float
 
@@ -23,7 +23,6 @@ class PurchaseLineRead(BaseModel):
 
 
 class PurchaseCreate(BaseModel):
-    id: str
     supplier_id: str
     eta: Date | None = None
     notes: str | None = None
@@ -36,6 +35,7 @@ class PurchaseStatusUpdate(BaseModel):
 
 class PurchaseRead(BaseModel):
     id: str
+    code: str
     supplier_id: str
     date: datetime
     total: float

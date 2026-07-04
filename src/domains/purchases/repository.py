@@ -1,4 +1,4 @@
-from sqlmodel import select
+from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.domains.purchases.models import Purchase, PurchaseLine, PurchaseStatus
@@ -10,26 +10,41 @@ class PurchaseRepository:
 
     async def get_all(
         self,
+        company_id: str,
         status: PurchaseStatus | None = None,
         supplier_id: str | None = None,
         offset: int = 0,
         limit: int = 50,
     ) -> tuple[list[Purchase], int]:
-        query = select(Purchase)
+        query = select(Purchase).where(Purchase.company_id == company_id)
         if status:
             query = query.where(Purchase.status == status)
         if supplier_id:
             query = query.where(Purchase.supplier_id == supplier_id)
 
-        count_result = await self.session.exec(select(Purchase))  # type: ignore
+        count_result = await self.session.exec(query)  # type: ignore
         total = len(count_result.all())
 
         result = await self.session.exec(query.order_by(Purchase.date.desc()).offset(offset).limit(limit))  # type: ignore
         return result.all(), total
 
-    async def get_by_id(self, id: str) -> Purchase | None:
-        result = await self.session.exec(select(Purchase).where(Purchase.id == id))  # type: ignore
+    async def get_by_id(self, company_id: str, id: str) -> Purchase | None:
+        result = await self.session.exec(  # type: ignore
+            select(Purchase).where(Purchase.company_id == company_id, Purchase.id == id)
+        )
         return result.first()
+
+    async def get_by_code(self, company_id: str, code: str) -> Purchase | None:
+        result = await self.session.exec(  # type: ignore
+            select(Purchase).where(Purchase.company_id == company_id, Purchase.code == code)
+        )
+        return result.first()
+
+    async def count_for_company(self, company_id: str) -> int:
+        result = await self.session.exec(  # type: ignore
+            select(func.count()).select_from(Purchase).where(Purchase.company_id == company_id)
+        )
+        return int(result.one())
 
     async def get_lines(self, purchase_id: str) -> list[PurchaseLine]:
         result = await self.session.exec(select(PurchaseLine).where(PurchaseLine.purchase_id == purchase_id))  # type: ignore

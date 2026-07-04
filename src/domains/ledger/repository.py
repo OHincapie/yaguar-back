@@ -12,13 +12,14 @@ class LedgerRepository:
 
     async def get_all(
         self,
+        company_id: str,
         category: LedgerCategory | None = None,
         from_date: datetime | None = None,
         to_date: datetime | None = None,
         offset: int = 0,
         limit: int = 50,
     ) -> tuple[list[LedgerEntry], int]:
-        query = select(LedgerEntry)
+        query = select(LedgerEntry).where(LedgerEntry.company_id == company_id)
         if category:
             query = query.where(LedgerEntry.category == category)
         if from_date:

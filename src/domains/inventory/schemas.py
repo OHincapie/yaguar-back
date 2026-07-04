@@ -6,7 +6,7 @@ from src.domains.inventory.models import MovementType
 
 
 class InventoryLevelRead(BaseModel):
-    product_sku: str
+    product_id: str
     stock_qty: float
     min_stock: float
     last_updated: datetime
@@ -22,7 +22,7 @@ class InventoryAdjust(BaseModel):
 
 class InventoryMovementRead(BaseModel):
     id: int
-    product_sku: str
+    product_id: str
     type: MovementType
     qty: float
     reference_id: str | None
