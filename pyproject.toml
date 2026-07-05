@@ -23,6 +23,7 @@ dependencies = [
     # system libpq — not present on Vercel's Python runtime. The [binary]
     # extra ships libpq statically linked, so it works out of the box.
     "psycopg[binary]>=3.2",
+    "langchain-google-genai>=4.2.6",
 ]
 
 [project.optional-dependencies]

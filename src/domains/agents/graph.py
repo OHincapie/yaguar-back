@@ -29,6 +29,7 @@ class AgentState(TypedDict):
     candidate: dict[str, Any]
     proposal: dict[str, Any] | None
     alert_id: str | None
+    can_auto: bool
     decision: str | None
 
 
@@ -102,7 +103,14 @@ def _build_graph(session: AsyncSession, checkpointer):
         )
         return {"proposal": build_proposal(candidate, draft)}
 
-    async def gate(state: AgentState) -> dict[str, Any]:
+    async def persist(state: AgentState) -> dict[str, Any]:
+        # A separate node from gate() on purpose: LangGraph re-runs a node
+        # from the top when it's resumed past an interrupt() inside it, so
+        # any DB write placed before that interrupt() call in the *same*
+        # node would happen twice (a duplicate AgentAlert, in this case).
+        # Splitting the write into its own node means it's already
+        # checkpointed as done before gate() ever pauses — resuming only
+        # re-runs gate(), whose sole job is the interrupt() call itself.
         proposal = state["proposal"]
         assert proposal is not None
 
@@ -121,12 +129,13 @@ def _build_graph(session: AsyncSession, checkpointer):
             thread_id=state["thread_id"],
         )
         alert = await repo.create_alert(alert)
+        return {"alert_id": alert.id, "can_auto": can_auto}
 
-        if can_auto:
-            return {"alert_id": alert.id, "decision": "approve"}
-
-        decision = interrupt({"alert_id": alert.id})
-        return {"alert_id": alert.id, "decision": decision}
+    async def gate(state: AgentState) -> dict[str, Any]:
+        if state["can_auto"]:
+            return {"decision": "approve"}
+        decision = interrupt({"alert_id": state["alert_id"]})
+        return {"decision": decision}
 
     async def execute(state: AgentState) -> dict[str, Any]:
         alert = await repo.get_alert(state["company_id"], state["alert_id"])  # type: ignore[arg-type]
@@ -152,10 +161,12 @@ def _build_graph(session: AsyncSession, checkpointer):
 
     graph = StateGraph(AgentState)
     graph.add_node("compose", compose)
+    graph.add_node("persist", persist)
     graph.add_node("gate", gate)
     graph.add_node("execute", execute)
     graph.add_edge(START, "compose")
-    graph.add_edge("compose", "gate")
+    graph.add_edge("compose", "persist")
+    graph.add_edge("persist", "gate")
     graph.add_edge("gate", "execute")
     graph.add_edge("execute", END)
     return graph.compile(checkpointer=checkpointer)
@@ -178,6 +189,7 @@ async def run_proposal(company_id: str, agent_key: str, candidate: dict[str, Any
                 "candidate": candidate,
                 "proposal": None,
                 "alert_id": None,
+                "can_auto": False,
                 "decision": None,
             },
             config={"configurable": {"thread_id": thread_id}},
