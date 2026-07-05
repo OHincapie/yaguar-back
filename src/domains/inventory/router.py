@@ -65,5 +65,7 @@ async def get_level(current_user: CurrentUser, product_id: str, service: Annotat
 async def adjust_inventory(
     current_user: CurrentUser, product_id: str, data: InventoryAdjust, service: Annotated[InventoryService, Depends(get_service)]
 ):
-    level = await service.adjust(current_user.company_id, product_id, data.qty, data.notes)
+    level = await service.adjust(
+        current_user.company_id, product_id, data.qty, min_stock=data.min_stock, notes=data.notes
+    )
     return InventoryLevelRead(**level.model_dump(), is_below_min=level.stock_qty <= level.min_stock)

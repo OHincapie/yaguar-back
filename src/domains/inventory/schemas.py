@@ -16,7 +16,8 @@ class InventoryLevelRead(BaseModel):
 
 
 class InventoryAdjust(BaseModel):
-    qty: float
+    qty: float = 0.0
+    min_stock: float | None = None
     notes: str | None = None
 
 

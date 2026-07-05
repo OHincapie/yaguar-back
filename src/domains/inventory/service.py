@@ -17,20 +17,28 @@ class InventoryService:
             raise NotFoundError("InventoryLevel", product_id)
         return level
 
-    async def adjust(self, company_id: str, product_id: str, qty: float, notes: str | None = None) -> InventoryLevel:
+    async def adjust(
+        self,
+        company_id: str,
+        product_id: str,
+        qty: float,
+        min_stock: float | None = None,
+        notes: str | None = None,
+    ) -> InventoryLevel:
         level = await self.repo.get_level(company_id, product_id)
         current = level.stock_qty if level else 0.0
         new_qty = current + qty
         if new_qty < 0:
             raise BusinessError(f"Cannot reduce stock below 0. Current: {current}, adjustment: {qty}")
-        await self.repo.add_movement(
-            company_id=company_id,
-            product_id=product_id,
-            type=MovementType.AJUSTE,
-            qty=qty,
-            notes=notes,
-        )
-        return await self.repo.upsert_level(company_id, product_id, qty)
+        if qty != 0:
+            await self.repo.add_movement(
+                company_id=company_id,
+                product_id=product_id,
+                type=MovementType.AJUSTE,
+                qty=qty,
+                notes=notes,
+            )
+        return await self.repo.upsert_level(company_id, product_id, qty, min_stock=min_stock)
 
     async def apply_sale(self, company_id: str, product_id: str, qty: float, sale_id: str) -> InventoryLevel:
         level = await self.repo.get_level(company_id, product_id)
