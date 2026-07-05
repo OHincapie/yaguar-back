@@ -7,6 +7,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from src.domains.inventory.repository import InventoryRepository
 from src.domains.inventory.service import InventoryService
 from src.domains.ledger.repository import LedgerRepository
+from src.domains.products.repository import ProductRepository
 from src.domains.sales.models import SaleStatus
 from src.domains.sales.repository import SaleRepository
 from src.domains.sales.schemas import SaleCreate, SaleLineRead, SaleRead, SaleStatusUpdate
@@ -21,7 +22,7 @@ router = APIRouter(prefix="/sales", tags=["sales"])
 def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> SaleService:
     return SaleService(
         SaleRepository(session),
-        InventoryService(InventoryRepository(session)),
+        InventoryService(InventoryRepository(session), ProductRepository(session)),
         LedgerRepository(session),
     )
 

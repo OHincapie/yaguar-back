@@ -6,6 +6,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from src.domains.inventory.repository import InventoryRepository
 from src.domains.inventory.service import InventoryService
 from src.domains.ledger.repository import LedgerRepository
+from src.domains.products.repository import ProductRepository
 from src.domains.purchases.models import PurchaseStatus
 from src.domains.purchases.repository import PurchaseRepository
 from src.domains.purchases.schemas import (
@@ -23,10 +24,12 @@ router = APIRouter(prefix="/purchases", tags=["purchases"])
 
 
 def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> PurchaseService:
+    product_repo = ProductRepository(session)
     return PurchaseService(
         PurchaseRepository(session),
-        InventoryService(InventoryRepository(session)),
+        InventoryService(InventoryRepository(session), product_repo),
         LedgerRepository(session),
+        product_repo,
     )
 
 

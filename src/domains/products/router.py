@@ -3,7 +3,15 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from src.domains.products.repository import ProductRepository
-from src.domains.products.schemas import CategoryCreate, CategoryRead, ProductCreate, ProductRead, ProductUpdate
+from src.domains.products.schemas import (
+    CategoryCreate,
+    CategoryRead,
+    ProductComponentRead,
+    ProductCreate,
+    ProductRead,
+    ProductUpdate,
+    SetComponentsRequest,
+)
 from src.domains.products.service import ProductService
 from src.shared.database import get_session
 from src.shared.middleware.auth import CurrentUser
@@ -52,6 +60,21 @@ async def update_product(current_user: CurrentUser, sku: str, data: ProductUpdat
 async def delete_product(current_user: CurrentUser, sku: str, service: Annotated[ProductService, Depends(get_service)]):
     await service.delete_product(current_user.company_id, sku)
     return MessageResponse(message=f"Product '{sku}' deleted")
+
+
+@router.get("/{sku}/components", response_model=list[ProductComponentRead])
+async def get_components(current_user: CurrentUser, sku: str, service: Annotated[ProductService, Depends(get_service)]):
+    return await service.get_components(current_user.company_id, sku)
+
+
+@router.put("/{sku}/components", response_model=list[ProductComponentRead])
+async def set_components(
+    current_user: CurrentUser,
+    sku: str,
+    data: SetComponentsRequest,
+    service: Annotated[ProductService, Depends(get_service)],
+):
+    return await service.set_components(current_user.company_id, sku, data.items)
 
 
 categories_router = APIRouter(prefix="/categories", tags=["products"])

@@ -1,17 +1,58 @@
+import math
+from datetime import datetime, timezone
+
 from src.domains.inventory.models import InventoryLevel, InventoryMovement, MovementType
 from src.domains.inventory.repository import InventoryRepository
+from src.domains.products.repository import ProductRepository
 from src.shared.middleware.errors import BusinessError, NotFoundError
 
 
 class InventoryService:
-    def __init__(self, repo: InventoryRepository):
+    def __init__(self, repo: InventoryRepository, product_repo: ProductRepository):
         self.repo = repo
+        self.product_repo = product_repo
+
+    async def _derive_bundle_level(self, company_id: str, bundle_product_id: str) -> InventoryLevel:
+        components = await self.product_repo.get_components(company_id, bundle_product_id)
+        if not components:
+            return InventoryLevel(
+                company_id=company_id, product_id=bundle_product_id, stock_qty=0.0, min_stock=0.0
+            )
+
+        available = []
+        last_updated = None
+        for comp in components:
+            level = await self.repo.get_level(company_id, comp.component_product_id)
+            comp_stock = level.stock_qty if level else 0.0
+            available.append(math.floor(comp_stock / comp.qty) if comp.qty > 0 else 0)
+            if level and (last_updated is None or level.last_updated > last_updated):
+                last_updated = level.last_updated
+
+        return InventoryLevel(
+            company_id=company_id,
+            product_id=bundle_product_id,
+            stock_qty=float(min(available)),
+            min_stock=0.0,
+            last_updated=last_updated or datetime.now(timezone.utc),
+        )
 
     async def list_levels(self, company_id: str, below_min: bool, page: int, page_size: int):
+        real_levels, _ = await self.repo.get_all_levels(company_id, below_min=False, offset=0, limit=10_000)
+        bundles = await self.product_repo.get_bundles(company_id)
+        bundle_levels = [await self._derive_bundle_level(company_id, b.id) for b in bundles]
+
+        combined = list(real_levels) + bundle_levels
+        if below_min:
+            combined = [lvl for lvl in combined if lvl.stock_qty <= lvl.min_stock]
+
+        total = len(combined)
         offset = (page - 1) * page_size
-        return await self.repo.get_all_levels(company_id, below_min=below_min, offset=offset, limit=page_size)
+        return combined[offset : offset + page_size], total
 
     async def get_level(self, company_id: str, product_id: str) -> InventoryLevel:
+        product = await self.product_repo.get_by_id(company_id, product_id)
+        if product and product.is_bundle:
+            return await self._derive_bundle_level(company_id, product_id)
         level = await self.repo.get_level(company_id, product_id)
         if not level:
             raise NotFoundError("InventoryLevel", product_id)
@@ -25,6 +66,12 @@ class InventoryService:
         min_stock: float | None = None,
         notes: str | None = None,
     ) -> InventoryLevel:
+        product = await self.product_repo.get_by_id(company_id, product_id)
+        if product and product.is_bundle:
+            raise BusinessError(
+                f"'{product.sku}' is a kit and has no stock of its own — adjust its base products instead"
+            )
+
         level = await self.repo.get_level(company_id, product_id)
         current = level.stock_qty if level else 0.0
         new_qty = current + qty
@@ -40,7 +87,39 @@ class InventoryService:
             )
         return await self.repo.upsert_level(company_id, product_id, qty, min_stock=min_stock)
 
-    async def apply_sale(self, company_id: str, product_id: str, qty: float, sale_id: str) -> InventoryLevel:
+    async def apply_sale(self, company_id: str, product_id: str, qty: float, sale_id: str) -> InventoryLevel | None:
+        product = await self.product_repo.get_by_id(company_id, product_id)
+        if product and product.is_bundle:
+            components = await self.product_repo.get_components(company_id, product_id)
+            if not components:
+                raise BusinessError(f"'{product.sku}' is a kit with no components configured")
+
+            # Validate every component has enough stock before deducting any of
+            # them, so a mid-kit failure doesn't leave a partially-applied sale.
+            for comp in components:
+                level = await self.repo.get_level(company_id, comp.component_product_id)
+                available = level.stock_qty if level else 0.0
+                required = comp.qty * qty
+                if available < required:
+                    raise BusinessError(
+                        f"Insufficient stock for kit component {comp.component_product_id}. "
+                        f"Available: {available}, required: {required}"
+                    )
+
+            last_level = None
+            for comp in components:
+                required = comp.qty * qty
+                await self.repo.add_movement(
+                    company_id=company_id,
+                    product_id=comp.component_product_id,
+                    type=MovementType.SALIDA,
+                    qty=-required,
+                    reference_id=sale_id,
+                    reference_type="sale",
+                )
+                last_level = await self.repo.upsert_level(company_id, comp.component_product_id, -required)
+            return last_level
+
         level = await self.repo.get_level(company_id, product_id)
         current = level.stock_qty if level else 0.0
         if current < qty:

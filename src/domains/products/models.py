@@ -28,3 +28,19 @@ class Product(SQLModel, table=True):
     cost: float
     supplier_id: Optional[str] = Field(default=None, foreign_key="suppliers.id", max_length=36)
     unit: str = Field(default="und", max_length=20)
+    is_bundle: bool = Field(default=False)
+
+
+class ProductComponent(SQLModel, table=True):
+    """A "kit" product is composed of `qty` units of a base (non-bundle)
+    product. The bundle itself never carries its own InventoryLevel —
+    its available stock is derived from its components at read time, and
+    selling it deducts from the components instead."""
+
+    __tablename__ = "product_components"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    company_id: str = Field(foreign_key="companies.id", max_length=36, index=True)
+    bundle_product_id: str = Field(foreign_key="products.id", max_length=36, index=True)
+    component_product_id: str = Field(foreign_key="products.id", max_length=36)
+    qty: float

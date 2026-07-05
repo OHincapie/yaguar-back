@@ -16,6 +16,22 @@ class CategoryRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ProductComponentItem(BaseModel):
+    component_product_id: str
+    qty: float
+
+
+class ProductComponentRead(BaseModel):
+    component_product_id: str
+    component_sku: str
+    component_name: str
+    qty: float
+
+
+class SetComponentsRequest(BaseModel):
+    items: list[ProductComponentItem]
+
+
 class ProductCreate(BaseModel):
     sku: str
     name: str
@@ -24,6 +40,7 @@ class ProductCreate(BaseModel):
     cost: float
     supplier_id: str | None = None
     unit: str = "und"
+    components: list[ProductComponentItem] | None = None
 
 
 class ProductUpdate(BaseModel):
@@ -44,6 +61,7 @@ class ProductRead(BaseModel):
     cost: float
     supplier_id: str | None
     unit: str
+    is_bundle: bool
 
     model_config = {"from_attributes": True}
 

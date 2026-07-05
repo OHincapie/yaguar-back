@@ -1,7 +1,7 @@
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.domains.products.models import Category, Product
+from src.domains.products.models import Category, Product, ProductComponent
 
 
 class ProductRepository:
@@ -40,6 +40,12 @@ class ProductRepository:
         )
         return result.first()
 
+    async def get_bundles(self, company_id: str) -> list[Product]:
+        result = await self.session.exec(  # type: ignore
+            select(Product).where(Product.company_id == company_id, Product.is_bundle == True)  # noqa: E712
+        )
+        return result.all()
+
     async def create(self, product: Product) -> Product:
         self.session.add(product)
         await self.session.commit()
@@ -77,3 +83,34 @@ class ProductRepository:
         await self.session.commit()
         await self.session.refresh(category)
         return category
+
+    async def get_components(self, company_id: str, bundle_product_id: str) -> list[ProductComponent]:
+        result = await self.session.exec(  # type: ignore
+            select(ProductComponent).where(
+                ProductComponent.company_id == company_id,
+                ProductComponent.bundle_product_id == bundle_product_id,
+            )
+        )
+        return result.all()
+
+    async def replace_components(
+        self, company_id: str, bundle_product_id: str, items: list[tuple[str, float]]
+    ) -> list[ProductComponent]:
+        existing = await self.get_components(company_id, bundle_product_id)
+        for row in existing:
+            await self.session.delete(row)
+        new_rows = [
+            ProductComponent(
+                company_id=company_id,
+                bundle_product_id=bundle_product_id,
+                component_product_id=component_id,
+                qty=qty,
+            )
+            for component_id, qty in items
+        ]
+        for row in new_rows:
+            self.session.add(row)
+        await self.session.commit()
+        for row in new_rows:
+            await self.session.refresh(row)
+        return new_rows

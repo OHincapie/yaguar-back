@@ -1,6 +1,7 @@
 from src.domains.inventory.service import InventoryService
 from src.domains.ledger.models import LedgerCategory, LedgerEntry, LedgerType
 from src.domains.ledger.repository import LedgerRepository
+from src.domains.products.repository import ProductRepository
 from src.domains.purchases.models import Purchase, PurchaseLine, PurchaseStatus
 from src.domains.purchases.repository import PurchaseRepository
 from src.domains.purchases.schemas import PurchaseCreate, PurchaseStatusUpdate
@@ -13,10 +14,12 @@ class PurchaseService:
         repo: PurchaseRepository,
         inventory_service: InventoryService,
         ledger_repo: LedgerRepository,
+        product_repo: ProductRepository,
     ):
         self.repo = repo
         self.inventory_service = inventory_service
         self.ledger_repo = ledger_repo
+        self.product_repo = product_repo
 
     async def list_purchases(self, company_id: str, status, supplier_id: str | None, page: int, page_size: int):
         offset = (page - 1) * page_size
@@ -33,6 +36,13 @@ class PurchaseService:
         return await self.repo.get_lines(purchase.id)
 
     async def create_purchase(self, company_id: str, data: PurchaseCreate) -> Purchase:
+        for line in data.lines:
+            product = await self.product_repo.get_by_id(company_id, line.product_id)
+            if product and product.is_bundle:
+                raise BusinessError(
+                    f"'{product.sku}' is a kit — you can't purchase it directly, buy its components instead"
+                )
+
         count = await self.repo.count_for_company(company_id)
         code = f"OC-{count + 1:05d}"
 

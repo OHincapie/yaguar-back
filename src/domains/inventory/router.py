@@ -8,6 +8,7 @@ from src.domains.inventory.models import MovementType
 from src.domains.inventory.repository import InventoryRepository
 from src.domains.inventory.schemas import InventoryAdjust, InventoryLevelRead, InventoryMovementRead
 from src.domains.inventory.service import InventoryService
+from src.domains.products.repository import ProductRepository
 from src.shared.database import get_session
 from src.shared.middleware.auth import CurrentUser
 from src.shared.types import PaginatedResponse
@@ -16,7 +17,7 @@ router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 
 def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> InventoryService:
-    return InventoryService(InventoryRepository(session))
+    return InventoryService(InventoryRepository(session), ProductRepository(session))
 
 
 @router.get("", response_model=PaginatedResponse[InventoryLevelRead])

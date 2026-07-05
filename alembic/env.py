@@ -9,7 +9,7 @@ from src.domains.accounts.models import Company, User, UserCompany  # noqa: F401
 from src.domains.customers.models import Customer  # noqa: F401
 from src.domains.inventory.models import InventoryLevel, InventoryMovement  # noqa: F401
 from src.domains.ledger.models import LedgerEntry  # noqa: F401
-from src.domains.products.models import Category, Product  # noqa: F401
+from src.domains.products.models import Category, Product, ProductComponent  # noqa: F401
 from src.domains.purchases.models import Purchase, PurchaseLine  # noqa: F401
 from src.domains.sales.models import Sale, SaleLine  # noqa: F401
 from src.domains.suppliers.models import Supplier  # noqa: F401
