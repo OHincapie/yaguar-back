@@ -15,6 +15,19 @@ class Settings(BaseSettings):
     cors_allowed_origins: str = "http://localhost:3000"
     cors_allowed_origin_regex: str = r"https://yaguar-front.*\.vercel\.app"
 
+    # AI agents. Swapping providers (e.g. to Gemini) is meant to be just
+    # changing llm_provider/llm_model — no agent code should import a
+    # provider SDK directly. See src/domains/agents/llm.py.
+    llm_provider: str = "openai"
+    llm_model: str = "gpt-4o-mini"
+    openai_api_key: str = ""
+    google_api_key: str = ""
+
+    # Vercel automatically sends this as `Authorization: Bearer <value>`
+    # on every cron invocation when a CRON_SECRET env var is set on the
+    # project — the name is fixed by Vercel's convention, not ours.
+    cron_secret: str = "change-me-in-production"
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]

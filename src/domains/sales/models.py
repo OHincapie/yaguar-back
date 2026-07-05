@@ -34,6 +34,9 @@ class Sale(SQLModel, table=True):
     payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO, sa_type=AutoString)
     status: SaleStatus = Field(default=SaleStatus.PENDIENTE, sa_type=AutoString)
     notes: Optional[str] = Field(default=None, max_length=500)
+    # Only meaningful for credit sales — Mara (collections agent) uses this
+    # to flag a sale as overdue. Null for cash/card/transfer sales.
+    due_date: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))
 
 
 class SaleLine(SQLModel, table=True):

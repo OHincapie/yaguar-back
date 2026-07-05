@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.domains.accounts.router import router as auth_router
+from src.domains.agents.router import router as agents_router
 from src.domains.customers.router import router as customers_router
 from src.domains.dashboard.router import router as dashboard_router
 from src.domains.inventory.router import router as inventory_router
@@ -51,3 +52,4 @@ app.include_router(sales_router, prefix=API_PREFIX)
 app.include_router(ledger_router, prefix=API_PREFIX)
 app.include_router(pos_router, prefix=API_PREFIX)
 app.include_router(dashboard_router, prefix=API_PREFIX)
+app.include_router(agents_router, prefix=API_PREFIX)
