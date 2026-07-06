@@ -71,3 +71,14 @@ class SaleRepository:
         await self.session.commit()
         await self.session.refresh(sale)
         return sale
+
+    async def replace_lines(self, sale_id: str, lines: list[SaleLine]) -> list[SaleLine]:
+        existing = await self.get_lines(sale_id)
+        for line in existing:
+            await self.session.delete(line)
+        for line in lines:
+            self.session.add(line)
+        await self.session.commit()
+        for line in lines:
+            await self.session.refresh(line)
+        return lines

@@ -36,6 +36,12 @@ class AccountsRepository:
         await self.session.refresh(company)
         return company
 
+    async def update_company(self, company: Company) -> Company:
+        self.session.add(company)
+        await self.session.commit()
+        await self.session.refresh(company)
+        return company
+
     async def add_membership(self, membership: UserCompany) -> UserCompany:
         self.session.add(membership)
         await self.session.commit()

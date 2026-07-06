@@ -38,3 +38,19 @@ class LedgerRepository:
         await self.session.commit()
         await self.session.refresh(entry)
         return entry
+
+    async def get_by_reference(self, company_id: str, reference_id: str, reference_type: str) -> LedgerEntry | None:
+        result = await self.session.exec(  # type: ignore
+            select(LedgerEntry).where(
+                LedgerEntry.company_id == company_id,
+                LedgerEntry.reference_id == reference_id,
+                LedgerEntry.reference_type == reference_type,
+            )
+        )
+        return result.first()
+
+    async def update(self, entry: LedgerEntry) -> LedgerEntry:
+        self.session.add(entry)
+        await self.session.commit()
+        await self.session.refresh(entry)
+        return entry

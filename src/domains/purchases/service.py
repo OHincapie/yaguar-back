@@ -1,3 +1,5 @@
+from src.domains.agents.models import PendingAgentTrigger
+from src.domains.agents.repository import AgentRepository
 from src.domains.inventory.service import InventoryService
 from src.domains.ledger.models import LedgerCategory, LedgerEntry, LedgerType
 from src.domains.ledger.repository import LedgerRepository
@@ -15,11 +17,13 @@ class PurchaseService:
         inventory_service: InventoryService,
         ledger_repo: LedgerRepository,
         product_repo: ProductRepository,
+        agent_repo: AgentRepository,
     ):
         self.repo = repo
         self.inventory_service = inventory_service
         self.ledger_repo = ledger_repo
         self.product_repo = product_repo
+        self.agent_repo = agent_repo
 
     async def list_purchases(self, company_id: str, status, supplier_id: str | None, page: int, page_size: int):
         offset = (page - 1) * page_size
@@ -78,6 +82,7 @@ class PurchaseService:
                 qty=line.qty,
                 purchase_id=purchase.id,
             )
+            await self._sync_cost(company_id, line)
 
         await self.ledger_repo.create(
             LedgerEntry(
@@ -93,3 +98,26 @@ class PurchaseService:
 
         purchase.status = PurchaseStatus.RECIBIDO
         return await self.repo.update(purchase)
+
+    async def _sync_cost(self, company_id: str, line: PurchaseLine) -> None:
+        """A supplier changing their price shows up here — the received
+        line's unit_cost becomes the product's cost of record going forward,
+        since it's the actual, current cost of restocking it. Also drops a
+        trigger for Kuri (margins agent) so it can flag/react if this moved
+        the resulting margin — Kuri has no detector yet, but the breadcrumb
+        is cheap to leave now."""
+        product = await self.product_repo.get_by_id(company_id, line.product_id)
+        if not product or product.cost == line.unit_cost:
+            return
+
+        old_cost = product.cost
+        product.cost = line.unit_cost
+        await self.product_repo.update(product)
+
+        await self.agent_repo.create_trigger(
+            PendingAgentTrigger(
+                company_id=company_id,
+                agent_key="precios",
+                context={"product_id": product.id, "sku": product.sku, "old_cost": old_cost, "new_cost": line.unit_cost},
+            )
+        )

@@ -4,13 +4,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from src.domains.accounts.repository import AccountsRepository
 from src.domains.inventory.repository import InventoryRepository
 from src.domains.inventory.service import InventoryService
 from src.domains.ledger.repository import LedgerRepository
 from src.domains.products.repository import ProductRepository
 from src.domains.sales.models import SaleStatus
 from src.domains.sales.repository import SaleRepository
-from src.domains.sales.schemas import SaleCreate, SaleLineRead, SaleRead, SaleStatusUpdate
+from src.domains.sales.schemas import SaleCreate, SaleLineRead, SaleRead, SaleStatusUpdate, SaleUpdate
 from src.domains.sales.service import SaleService
 from src.shared.database import get_session
 from src.shared.middleware.auth import CurrentUser
@@ -24,6 +25,7 @@ def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> SaleS
         SaleRepository(session),
         InventoryService(InventoryRepository(session), ProductRepository(session)),
         LedgerRepository(session),
+        AccountsRepository(session),
     )
 
 
@@ -59,6 +61,11 @@ async def get_sale(current_user: CurrentUser, code: str, service: Annotated[Sale
 @router.put("/{code}/status", response_model=SaleRead)
 async def update_status(current_user: CurrentUser, code: str, data: SaleStatusUpdate, service: Annotated[SaleService, Depends(get_service)]):
     return await service.update_status(current_user.company_id, code, data)
+
+
+@router.put("/{code}", response_model=SaleRead)
+async def update_sale(current_user: CurrentUser, code: str, data: SaleUpdate, service: Annotated[SaleService, Depends(get_service)]):
+    return await service.update_sale(current_user.company_id, code, data)
 
 
 @router.get("/{code}/lines", response_model=list[SaleLineRead])

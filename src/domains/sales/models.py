@@ -30,6 +30,12 @@ class Sale(SQLModel, table=True):
     code: str = Field(max_length=50)
     customer_id: str = Field(foreign_key="customers.id", max_length=36)
     date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_type=DateTime(timezone=True))
+    # subtotal = sum(qty * unit_price); total = subtotal - discount_amount + tax_amount.
+    # Stored (not recomputed later) so a sale's numbers stay accurate even if
+    # the company's discount_pct/tax_pct or enabled flags change afterwards.
+    subtotal: float = Field(default=0.0)
+    discount_amount: float = Field(default=0.0)
+    tax_amount: float = Field(default=0.0)
     total: float = Field(default=0.0)
     payment_method: PaymentMethod = Field(default=PaymentMethod.EFECTIVO, sa_type=AutoString)
     status: SaleStatus = Field(default=SaleStatus.PENDIENTE, sa_type=AutoString)

@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from src.domains.agents.repository import AgentRepository
 from src.domains.inventory.repository import InventoryRepository
 from src.domains.inventory.service import InventoryService
 from src.domains.ledger.repository import LedgerRepository
@@ -30,6 +31,7 @@ def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> Purch
         InventoryService(InventoryRepository(session), product_repo),
         LedgerRepository(session),
         product_repo,
+        AgentRepository(session),
     )
 
 

@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from src.domains.accounts.repository import AccountsRepository
 from src.domains.inventory.repository import InventoryRepository
 from src.domains.inventory.service import InventoryService
 from src.domains.ledger.repository import LedgerRepository
@@ -23,6 +24,7 @@ def get_sale_service(session: Annotated[AsyncSession, Depends(get_session)]) -> 
         SaleRepository(session),
         InventoryService(InventoryRepository(session), ProductRepository(session)),
         LedgerRepository(session),
+        AccountsRepository(session),
     )
 
 
@@ -40,5 +42,4 @@ async def checkout(
         lines=[SaleLineCreate(**line.model_dump()) for line in data.lines],
     )
     sale = await service.create_sale(current_user.company_id, sale_data)
-    total = sum(line.qty * line.unit_price for line in data.lines)
-    return CheckoutResponse(sale=sale, total=total, items_count=len(data.lines))
+    return CheckoutResponse(sale=sale, total=sale.total, items_count=len(data.lines))

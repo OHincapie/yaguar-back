@@ -21,6 +21,13 @@ class Company(SQLModel, table=True):
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc), sa_type=DateTime(timezone=True)
     )
+    # POS checkout defaults. Percentages on a 0-100 scale (matches
+    # Supplier.on_time_pct elsewhere). Toggling *_enabled off means new
+    # sales are recorded with that amount as 0 — it does not touch past sales.
+    discount_enabled: bool = Field(default=True)
+    discount_pct: float = Field(default=5.0)
+    tax_enabled: bool = Field(default=True)
+    tax_pct: float = Field(default=18.0)
 
 
 class User(SQLModel, table=True):

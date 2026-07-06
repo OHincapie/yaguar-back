@@ -40,3 +40,19 @@ class MeResponse(BaseModel):
     company_id: str
     company_name: str
     role: CompanyRole
+
+
+class CompanySettingsRead(BaseModel):
+    discount_enabled: bool
+    discount_pct: float
+    tax_enabled: bool
+    tax_pct: float
+
+    model_config = {"from_attributes": True}
+
+
+class CompanySettingsUpdate(BaseModel):
+    discount_enabled: bool | None = None
+    discount_pct: float | None = None
+    tax_enabled: bool | None = None
+    tax_pct: float | None = None

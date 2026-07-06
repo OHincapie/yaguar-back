@@ -6,6 +6,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from src.domains.accounts.repository import AccountsRepository
 from src.domains.accounts.schemas import (
     CompanyRead,
+    CompanySettingsRead,
+    CompanySettingsUpdate,
     LoginRequest,
     MeResponse,
     RegisterRequest,
@@ -65,3 +67,17 @@ async def switch_company(
 ):
     token, _company = await service.switch_company(current_user.user_id, data.company_id)
     return TokenResponse(access_token=token)
+
+
+@router.get("/settings", response_model=CompanySettingsRead)
+async def get_settings(current_user: CurrentUser, service: Annotated[AccountsService, Depends(get_service)]):
+    return await service.get_settings(current_user.company_id)
+
+
+@router.put("/settings", response_model=CompanySettingsRead)
+async def update_settings(
+    current_user: CurrentUser,
+    data: CompanySettingsUpdate,
+    service: Annotated[AccountsService, Depends(get_service)],
+):
+    return await service.update_settings(current_user.company_id, data.model_dump(exclude_unset=True))

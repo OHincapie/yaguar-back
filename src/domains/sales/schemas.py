@@ -35,11 +35,22 @@ class SaleStatusUpdate(BaseModel):
     status: SaleStatus
 
 
+class SaleUpdate(BaseModel):
+    notes: str | None = None
+    # When provided, replaces the sale's lines entirely and recalculates
+    # subtotal/discount_amount/tax_amount/total from the company's current
+    # discount_pct/tax_pct settings — same rule used at creation time.
+    lines: list[SaleLineCreate] | None = None
+
+
 class SaleRead(BaseModel):
     id: str
     code: str
     customer_id: str
     date: datetime
+    subtotal: float
+    discount_amount: float
+    tax_amount: float
     total: float
     payment_method: PaymentMethod
     status: SaleStatus

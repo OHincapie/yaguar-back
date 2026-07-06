@@ -83,3 +83,17 @@ class AccountsService:
         if not user or not company or not membership:
             raise NotFoundError("User", user_id)
         return user, company, membership.role
+
+    async def get_settings(self, company_id: str) -> Company:
+        company = await self.repo.get_company(company_id)
+        if not company:
+            raise NotFoundError("Company", company_id)
+        return company
+
+    async def update_settings(self, company_id: str, data: dict) -> Company:
+        company = await self.repo.get_company(company_id)
+        if not company:
+            raise NotFoundError("Company", company_id)
+        for field, value in data.items():
+            setattr(company, field, value)
+        return await self.repo.update_company(company)

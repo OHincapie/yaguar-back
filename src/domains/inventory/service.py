@@ -134,6 +134,39 @@ class InventoryService:
         )
         return await self.repo.upsert_level(company_id, product_id, -qty)
 
+    async def reverse_sale(self, company_id: str, product_id: str, qty: float, sale_id: str) -> None:
+        """Undo a previously-applied sale line — used when editing a sale's
+        lines (the old lines are reversed, then the new ones go through
+        apply_sale as normal). Mirrors apply_sale's kit expansion, but adds
+        stock back instead of validating/deducting it."""
+        product = await self.product_repo.get_by_id(company_id, product_id)
+        if product and product.is_bundle:
+            components = await self.product_repo.get_components(company_id, product_id)
+            for comp in components:
+                restored = comp.qty * qty
+                await self.repo.add_movement(
+                    company_id=company_id,
+                    product_id=comp.component_product_id,
+                    type=MovementType.AJUSTE,
+                    qty=restored,
+                    reference_id=sale_id,
+                    reference_type="sale_edit",
+                    notes="Reversión por edición de venta",
+                )
+                await self.repo.upsert_level(company_id, comp.component_product_id, restored)
+            return
+
+        await self.repo.add_movement(
+            company_id=company_id,
+            product_id=product_id,
+            type=MovementType.AJUSTE,
+            qty=qty,
+            reference_id=sale_id,
+            reference_type="sale_edit",
+            notes="Reversión por edición de venta",
+        )
+        await self.repo.upsert_level(company_id, product_id, qty)
+
     async def apply_purchase_receipt(self, company_id: str, product_id: str, qty: float, purchase_id: str) -> InventoryLevel:
         await self.repo.add_movement(
             company_id=company_id,
