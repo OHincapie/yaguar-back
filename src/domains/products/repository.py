@@ -61,14 +61,13 @@ class ProductRepository:
         return product
 
     async def delete(self, product: Product) -> None:
+        sku = product.sku  # read before rollback expires the instance's attributes
         await self.session.delete(product)
         try:
             await self.session.commit()
         except IntegrityError as exc:
             await self.session.rollback()
-            raise ConflictError(
-                f"Can't delete '{product.sku}' — it has inventory, purchase, or sale records tied to it"
-            ) from exc
+            raise ConflictError(f"Can't delete '{sku}' — it has inventory, purchase, or sale records tied to it") from exc
 
     async def get_all_categories(self, company_id: str) -> list[Category]:
         result = await self.session.exec(select(Category).where(Category.company_id == company_id))  # type: ignore

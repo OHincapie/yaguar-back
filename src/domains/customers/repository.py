@@ -58,9 +58,10 @@ class CustomerRepository:
         return customer
 
     async def delete(self, customer: Customer) -> None:
+        code = customer.code  # read before rollback expires the instance's attributes
         await self.session.delete(customer)
         try:
             await self.session.commit()
         except IntegrityError as exc:
             await self.session.rollback()
-            raise ConflictError(f"Can't delete '{customer.code}' — it has sales tied to it") from exc
+            raise ConflictError(f"Can't delete '{code}' — it has sales tied to it") from exc
