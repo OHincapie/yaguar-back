@@ -9,10 +9,10 @@ from src.domains.ledger.repository import LedgerRepository
 from src.domains.ledger.schemas import LedgerEntryCreate, LedgerEntryRead
 from src.domains.ledger.service import LedgerService
 from src.shared.database import get_session
-from src.shared.middleware.auth import CurrentUser
+from src.shared.middleware.auth import CurrentUser, require_module
 from src.shared.types import PaginatedResponse
 
-router = APIRouter(prefix="/ledger", tags=["ledger"])
+router = APIRouter(prefix="/ledger", tags=["ledger"], dependencies=[Depends(require_module("libro"))])
 
 
 def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> LedgerService:

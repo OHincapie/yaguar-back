@@ -14,11 +14,11 @@ from src.domains.products.schemas import (
 )
 from src.domains.products.service import ProductService
 from src.shared.database import get_session
-from src.shared.middleware.auth import CurrentUser
+from src.shared.middleware.auth import CurrentUser, require_module
 from src.shared.types import MessageResponse, PaginatedResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-router = APIRouter(prefix="/products", tags=["products"])
+router = APIRouter(prefix="/products", tags=["products"], dependencies=[Depends(require_module("inventario"))])
 
 
 def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> ProductService:

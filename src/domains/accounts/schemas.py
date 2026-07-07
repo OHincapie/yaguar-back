@@ -40,6 +40,9 @@ class MeResponse(BaseModel):
     company_id: str
     company_name: str
     role: CompanyRole
+    # Empty for owner/admin — the frontend should treat that as "all
+    # modules", not "no modules"; see AuthContext.has_module on the backend.
+    modules: list[str]
 
 
 class CompanySettingsRead(BaseModel):
@@ -56,3 +59,27 @@ class CompanySettingsUpdate(BaseModel):
     discount_pct: float | None = None
     tax_enabled: bool | None = None
     tax_pct: float | None = None
+
+
+class CompanyUserRead(BaseModel):
+    user_id: str
+    name: str
+    email: str
+    role: CompanyRole
+    modules: list[str]
+    is_active: bool
+
+
+class CompanyUserCreate(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    role: CompanyRole = CompanyRole.MEMBER
+    modules: list[str] = []
+
+
+class CompanyUserUpdate(BaseModel):
+    name: str | None = None
+    role: CompanyRole | None = None
+    modules: list[str] | None = None
+    is_active: bool | None = None

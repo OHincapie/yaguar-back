@@ -10,10 +10,10 @@ from src.domains.inventory.schemas import InventoryAdjust, InventoryLevelRead, I
 from src.domains.inventory.service import InventoryService
 from src.domains.products.repository import ProductRepository
 from src.shared.database import get_session
-from src.shared.middleware.auth import CurrentUser
+from src.shared.middleware.auth import CurrentUser, require_module
 from src.shared.types import PaginatedResponse
 
-router = APIRouter(prefix="/inventory", tags=["inventory"])
+router = APIRouter(prefix="/inventory", tags=["inventory"], dependencies=[Depends(require_module("inventario"))])
 
 
 def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> InventoryService:

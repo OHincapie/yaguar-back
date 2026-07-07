@@ -8,6 +8,9 @@ from src.domains.accounts.schemas import (
     CompanyRead,
     CompanySettingsRead,
     CompanySettingsUpdate,
+    CompanyUserCreate,
+    CompanyUserRead,
+    CompanyUserUpdate,
     LoginRequest,
     MeResponse,
     RegisterRequest,
@@ -16,7 +19,7 @@ from src.domains.accounts.schemas import (
 )
 from src.domains.accounts.service import AccountsService
 from src.shared.database import get_session
-from src.shared.middleware.auth import CurrentUser
+from src.shared.middleware.auth import CurrentUser, require_owner_or_admin
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -39,14 +42,15 @@ async def login(data: LoginRequest, service: Annotated[AccountsService, Depends(
 
 @router.get("/me", response_model=MeResponse)
 async def me(current_user: CurrentUser, service: Annotated[AccountsService, Depends(get_service)]):
-    user, company, role = await service.get_me(current_user.user_id, current_user.company_id)
+    user, company, membership = await service.get_me(current_user.user_id, current_user.company_id)
     return MeResponse(
         user_id=user.id,
         email=user.email,
         name=user.name,
         company_id=company.id,
         company_name=company.name,
-        role=role,
+        role=membership.role,
+        modules=membership.modules,
     )
 
 
@@ -74,10 +78,63 @@ async def get_settings(current_user: CurrentUser, service: Annotated[AccountsSer
     return await service.get_settings(current_user.company_id)
 
 
-@router.put("/settings", response_model=CompanySettingsRead)
+@router.put("/settings", response_model=CompanySettingsRead, dependencies=[Depends(require_owner_or_admin)])
 async def update_settings(
     current_user: CurrentUser,
     data: CompanySettingsUpdate,
     service: Annotated[AccountsService, Depends(get_service)],
 ):
     return await service.update_settings(current_user.company_id, data.model_dump(exclude_unset=True))
+
+
+def _to_user_read(membership, user) -> CompanyUserRead:
+    return CompanyUserRead(
+        user_id=user.id,
+        name=user.name,
+        email=user.email,
+        role=membership.role,
+        modules=membership.modules,
+        is_active=user.is_active,
+    )
+
+
+@router.get("/users", response_model=list[CompanyUserRead], dependencies=[Depends(require_owner_or_admin)])
+async def list_users(current_user: CurrentUser, service: Annotated[AccountsService, Depends(get_service)]):
+    pairs = await service.list_company_users(current_user.company_id)
+    return [_to_user_read(m, u) for m, u in pairs]
+
+
+@router.post(
+    "/users",
+    response_model=CompanyUserRead,
+    status_code=201,
+    dependencies=[Depends(require_owner_or_admin)],
+)
+async def create_user(
+    current_user: CurrentUser,
+    data: CompanyUserCreate,
+    service: Annotated[AccountsService, Depends(get_service)],
+):
+    membership, user = await service.create_company_user(current_user.company_id, data)
+    return _to_user_read(membership, user)
+
+
+@router.put("/users/{user_id}", response_model=CompanyUserRead, dependencies=[Depends(require_owner_or_admin)])
+async def update_user(
+    current_user: CurrentUser,
+    user_id: str,
+    data: CompanyUserUpdate,
+    service: Annotated[AccountsService, Depends(get_service)],
+):
+    membership, user = await service.update_company_user(current_user.company_id, user_id, data)
+    return _to_user_read(membership, user)
+
+
+@router.delete("/users/{user_id}", dependencies=[Depends(require_owner_or_admin)])
+async def remove_user(
+    current_user: CurrentUser,
+    user_id: str,
+    service: Annotated[AccountsService, Depends(get_service)],
+):
+    await service.remove_company_user(current_user.company_id, user_id)
+    return {"message": "User removed"}

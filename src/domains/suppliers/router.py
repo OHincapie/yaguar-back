@@ -8,10 +8,10 @@ from src.domains.suppliers.repository import SupplierRepository
 from src.domains.suppliers.schemas import SupplierCreate, SupplierRead, SupplierUpdate
 from src.domains.suppliers.service import SupplierService
 from src.shared.database import get_session
-from src.shared.middleware.auth import CurrentUser
+from src.shared.middleware.auth import CurrentUser, require_module
 from src.shared.types import MessageResponse, PaginatedResponse
 
-router = APIRouter(prefix="/suppliers", tags=["suppliers"])
+router = APIRouter(prefix="/suppliers", tags=["suppliers"], dependencies=[Depends(require_module("proveedores"))])
 
 
 def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> SupplierService:

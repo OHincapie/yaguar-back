@@ -18,10 +18,10 @@ from src.domains.purchases.schemas import (
 )
 from src.domains.purchases.service import PurchaseService
 from src.shared.database import get_session
-from src.shared.middleware.auth import CurrentUser
+from src.shared.middleware.auth import CurrentUser, require_module
 from src.shared.types import PaginatedResponse
 
-router = APIRouter(prefix="/purchases", tags=["purchases"])
+router = APIRouter(prefix="/purchases", tags=["purchases"], dependencies=[Depends(require_module("compras"))])
 
 
 def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> PurchaseService:

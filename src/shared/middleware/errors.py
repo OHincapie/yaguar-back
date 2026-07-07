@@ -23,6 +23,14 @@ class UnauthorizedError(Exception):
         self.message = message
 
 
+class ForbiddenError(Exception):
+    """Authenticated, but not allowed to do this — distinct from
+    UnauthorizedError (401, not authenticated at all)."""
+
+    def __init__(self, message: str = "Forbidden"):
+        self.message = message
+
+
 def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(NotFoundError)
     async def not_found_handler(request: Request, exc: NotFoundError) -> JSONResponse:
@@ -42,3 +50,7 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(UnauthorizedError)
     async def unauthorized_handler(request: Request, exc: UnauthorizedError) -> JSONResponse:
         return JSONResponse(status_code=401, content={"detail": exc.message})
+
+    @app.exception_handler(ForbiddenError)
+    async def forbidden_handler(request: Request, exc: ForbiddenError) -> JSONResponse:
+        return JSONResponse(status_code=403, content={"detail": exc.message})

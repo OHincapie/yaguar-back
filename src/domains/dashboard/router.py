@@ -13,9 +13,9 @@ from src.domains.products.models import Product
 from src.domains.sales.models import Sale, SaleStatus
 from src.domains.suppliers.models import Supplier
 from src.shared.database import get_session
-from src.shared.middleware.auth import CurrentUser
+from src.shared.middleware.auth import CurrentUser, require_module
 
-router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(require_module("dashboard"))])
 
 
 @router.get("/kpis", response_model=KpiPanel)

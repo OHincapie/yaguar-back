@@ -8,10 +8,10 @@ from src.domains.customers.repository import CustomerRepository
 from src.domains.customers.schemas import CustomerCreate, CustomerRead, CustomerUpdate
 from src.domains.customers.service import CustomerService
 from src.shared.database import get_session
-from src.shared.middleware.auth import CurrentUser
+from src.shared.middleware.auth import CurrentUser, require_module
 from src.shared.types import MessageResponse, PaginatedResponse
 
-router = APIRouter(prefix="/customers", tags=["customers"])
+router = APIRouter(prefix="/customers", tags=["customers"], dependencies=[Depends(require_module("clientes"))])
 
 
 def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> CustomerService:

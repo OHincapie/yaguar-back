@@ -14,10 +14,10 @@ from src.domains.sales.repository import SaleRepository
 from src.domains.sales.schemas import SaleCreate, SaleLineRead, SaleRead, SaleStatusUpdate, SaleUpdate
 from src.domains.sales.service import SaleService
 from src.shared.database import get_session
-from src.shared.middleware.auth import CurrentUser
+from src.shared.middleware.auth import CurrentUser, require_module
 from src.shared.types import PaginatedResponse
 
-router = APIRouter(prefix="/sales", tags=["sales"])
+router = APIRouter(prefix="/sales", tags=["sales"], dependencies=[Depends(require_module("ventas"))])
 
 
 def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> SaleService:

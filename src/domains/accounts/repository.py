@@ -58,3 +58,21 @@ class AccountsRepository:
     async def list_memberships(self, user_id: str) -> list[UserCompany]:
         result = await self.session.exec(select(UserCompany).where(UserCompany.user_id == user_id))  # type: ignore
         return result.all()
+
+    async def list_company_members(self, company_id: str) -> list[tuple[UserCompany, User]]:
+        result = await self.session.exec(  # type: ignore
+            select(UserCompany, User)
+            .where(UserCompany.company_id == company_id, UserCompany.user_id == User.id)
+            .order_by(User.name)
+        )
+        return result.all()
+
+    async def update_membership(self, membership: UserCompany) -> UserCompany:
+        self.session.add(membership)
+        await self.session.commit()
+        await self.session.refresh(membership)
+        return membership
+
+    async def remove_membership(self, membership: UserCompany) -> None:
+        await self.session.delete(membership)
+        await self.session.commit()

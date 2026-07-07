@@ -7,22 +7,26 @@ from src.domains.agents.repository import AgentRepository
 from src.domains.agents.schemas import AgentAlertRead, AgentConfigRead, AgentConfigUpdate
 from src.domains.agents.service import AgentService
 from src.shared.database import get_session
-from src.shared.middleware.auth import CurrentUser
+from src.shared.middleware.auth import CurrentUser, require_module
 from src.shared.settings import settings
 
 router = APIRouter(prefix="/agents", tags=["agents"])
+# Not applied at router level like every other domain: /sweep-all doesn't
+# use CurrentUser at all (the cron hits it with CRON_SECRET, no logged-in
+# user), so it's set per-endpoint here instead.
+_require_agentes = Depends(require_module("agentes"))
 
 
 def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> AgentService:
     return AgentService(AgentRepository(session), session)
 
 
-@router.get("/configs", response_model=list[AgentConfigRead])
+@router.get("/configs", response_model=list[AgentConfigRead], dependencies=[_require_agentes])
 async def list_configs(current_user: CurrentUser, service: Annotated[AgentService, Depends(get_service)]):
     return await service.list_configs(current_user.company_id)
 
 
-@router.put("/configs/{agent_key}", response_model=AgentConfigRead)
+@router.put("/configs/{agent_key}", response_model=AgentConfigRead, dependencies=[_require_agentes])
 async def update_config(
     current_user: CurrentUser,
     agent_key: str,
@@ -32,7 +36,7 @@ async def update_config(
     return await service.update_config(current_user.company_id, agent_key, data)
 
 
-@router.get("/alerts", response_model=list[AgentAlertRead])
+@router.get("/alerts", response_model=list[AgentAlertRead], dependencies=[_require_agentes])
 async def list_alerts(
     current_user: CurrentUser,
     service: Annotated[AgentService, Depends(get_service)],
@@ -41,17 +45,17 @@ async def list_alerts(
     return await service.list_alerts(current_user.company_id, status)
 
 
-@router.post("/alerts/{alert_id}/approve", response_model=AgentAlertRead)
+@router.post("/alerts/{alert_id}/approve", response_model=AgentAlertRead, dependencies=[_require_agentes])
 async def approve_alert(current_user: CurrentUser, alert_id: str, service: Annotated[AgentService, Depends(get_service)]):
     return await service.approve_alert(current_user.company_id, alert_id)
 
 
-@router.post("/alerts/{alert_id}/reject", response_model=AgentAlertRead)
+@router.post("/alerts/{alert_id}/reject", response_model=AgentAlertRead, dependencies=[_require_agentes])
 async def reject_alert(current_user: CurrentUser, alert_id: str, service: Annotated[AgentService, Depends(get_service)]):
     return await service.reject_alert(current_user.company_id, alert_id)
 
 
-@router.post("/sweep")
+@router.post("/sweep", dependencies=[_require_agentes])
 async def sweep(current_user: CurrentUser, service: Annotated[AgentService, Depends(get_service)]):
     """Manual trigger for the logged-in company — handy for testing
     without waiting for the cron. The cron itself uses /sweep-all."""

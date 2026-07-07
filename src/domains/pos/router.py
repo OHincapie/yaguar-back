@@ -13,9 +13,9 @@ from src.domains.sales.repository import SaleRepository
 from src.domains.sales.schemas import SaleCreate, SaleLineCreate
 from src.domains.sales.service import SaleService
 from src.shared.database import get_session
-from src.shared.middleware.auth import CurrentUser
+from src.shared.middleware.auth import CurrentUser, require_module
 
-router = APIRouter(prefix="/pos", tags=["pos"])
+router = APIRouter(prefix="/pos", tags=["pos"], dependencies=[Depends(require_module("pos"))])
 
 
 def get_sale_service(session: Annotated[AsyncSession, Depends(get_session)]) -> SaleService:

@@ -2,11 +2,11 @@ import re
 
 import bcrypt
 
-from src.domains.accounts.models import Company, CompanyRole, User, UserCompany
+from src.domains.accounts.models import MODULE_KEYS, Company, CompanyRole, User, UserCompany
 from src.domains.accounts.repository import AccountsRepository
-from src.domains.accounts.schemas import LoginRequest, RegisterRequest
-from src.shared.middleware.auth import create_access_token
-from src.shared.middleware.errors import ConflictError, NotFoundError, UnauthorizedError
+from src.domains.accounts.schemas import CompanyUserCreate, CompanyUserUpdate, LoginRequest, RegisterRequest
+from src.shared.middleware.auth import OWNER_ROLES, create_access_token
+from src.shared.middleware.errors import BusinessError, ConflictError, NotFoundError, UnauthorizedError
 
 
 def _slugify(name: str) -> str:
@@ -82,7 +82,7 @@ class AccountsService:
         membership = await self.repo.get_membership(user_id, company_id)
         if not user or not company or not membership:
             raise NotFoundError("User", user_id)
-        return user, company, membership.role
+        return user, company, membership
 
     async def get_settings(self, company_id: str) -> Company:
         company = await self.repo.get_company(company_id)
@@ -97,3 +97,68 @@ class AccountsService:
         for field, value in data.items():
             setattr(company, field, value)
         return await self.repo.update_company(company)
+
+    async def list_company_users(self, company_id: str) -> list[tuple[UserCompany, User]]:
+        return await self.repo.list_company_members(company_id)
+
+    async def create_company_user(self, company_id: str, data: CompanyUserCreate) -> tuple[UserCompany, User]:
+        self._validate_modules(data.modules)
+
+        user = await self.repo.get_user_by_email(data.email)
+        if user:
+            if await self.repo.get_membership(user.id, company_id):
+                raise ConflictError(f"'{data.email}' is already a member of this company")
+        else:
+            password_hash = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
+            user = await self.repo.create_user(User(email=data.email, password_hash=password_hash, name=data.name))
+
+        membership = await self.repo.add_membership(
+            UserCompany(user_id=user.id, company_id=company_id, role=data.role, modules=data.modules)
+        )
+        return membership, user
+
+    async def update_company_user(self, company_id: str, user_id: str, data: CompanyUserUpdate) -> tuple[UserCompany, User]:
+        membership = await self.repo.get_membership(user_id, company_id)
+        user = await self.repo.get_user(user_id)
+        if not membership or not user:
+            raise NotFoundError("User", user_id)
+
+        if data.role is not None and data.role != CompanyRole.OWNER and membership.role == CompanyRole.OWNER:
+            await self._ensure_not_last_owner(company_id, user_id)
+        if data.modules is not None:
+            self._validate_modules(data.modules)
+            membership.modules = data.modules
+        if data.role is not None:
+            membership.role = data.role
+        await self.repo.update_membership(membership)
+
+        if data.name is not None:
+            user.name = data.name
+        if data.is_active is not None:
+            if not data.is_active and membership.role == CompanyRole.OWNER:
+                await self._ensure_not_last_owner(company_id, user_id)
+            user.is_active = data.is_active
+        await self.repo.create_user(user)  # add+commit+refresh, works for updates too
+
+        return membership, user
+
+    async def remove_company_user(self, company_id: str, user_id: str) -> None:
+        membership = await self.repo.get_membership(user_id, company_id)
+        if not membership:
+            raise NotFoundError("User", user_id)
+        if membership.role == CompanyRole.OWNER:
+            await self._ensure_not_last_owner(company_id, user_id)
+        await self.repo.remove_membership(membership)
+
+    def _validate_modules(self, modules: list[str]) -> None:
+        unknown = set(modules) - set(MODULE_KEYS)
+        if unknown:
+            raise BusinessError(f"Unknown module(s): {', '.join(sorted(unknown))}")
+
+    async def _ensure_not_last_owner(self, company_id: str, excluding_user_id: str) -> None:
+        members = await self.repo.list_company_members(company_id)
+        other_owners = [
+            m for m, _u in members if m.role in OWNER_ROLES and m.user_id != excluding_user_id
+        ]
+        if not other_owners:
+            raise BusinessError("A company must keep at least one owner/admin")
