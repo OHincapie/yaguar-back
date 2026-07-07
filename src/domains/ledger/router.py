@@ -12,7 +12,8 @@ from src.shared.database import get_session
 from src.shared.middleware.auth import CurrentUser, require_module
 from src.shared.types import PaginatedResponse
 
-router = APIRouter(prefix="/ledger", tags=["ledger"], dependencies=[Depends(require_module("libro"))])
+router = APIRouter(prefix="/ledger", tags=["ledger"])
+_require_libro = Depends(require_module("libro"))
 
 
 def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> LedgerService:
@@ -36,6 +37,6 @@ async def list_entries(
     return PaginatedResponse(data=entries, total=total, page=page, page_size=page_size, pages=pages)
 
 
-@router.post("", response_model=LedgerEntryRead, status_code=201)
+@router.post("", response_model=LedgerEntryRead, status_code=201, dependencies=[_require_libro])
 async def create_entry(current_user: CurrentUser, data: LedgerEntryCreate, service: Annotated[LedgerService, Depends(get_service)]):
     return await service.create_entry(current_user.company_id, data)

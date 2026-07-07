@@ -21,7 +21,7 @@ def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> Agent
     return AgentService(AgentRepository(session), session)
 
 
-@router.get("/configs", response_model=list[AgentConfigRead], dependencies=[_require_agentes])
+@router.get("/configs", response_model=list[AgentConfigRead])
 async def list_configs(current_user: CurrentUser, service: Annotated[AgentService, Depends(get_service)]):
     return await service.list_configs(current_user.company_id)
 
@@ -36,7 +36,7 @@ async def update_config(
     return await service.update_config(current_user.company_id, agent_key, data)
 
 
-@router.get("/alerts", response_model=list[AgentAlertRead], dependencies=[_require_agentes])
+@router.get("/alerts", response_model=list[AgentAlertRead])
 async def list_alerts(
     current_user: CurrentUser,
     service: Annotated[AgentService, Depends(get_service)],

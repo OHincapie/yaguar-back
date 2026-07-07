@@ -11,7 +11,10 @@ from src.shared.database import get_session
 from src.shared.middleware.auth import CurrentUser, require_module
 from src.shared.types import MessageResponse, PaginatedResponse
 
-router = APIRouter(prefix="/suppliers", tags=["suppliers"], dependencies=[Depends(require_module("proveedores"))])
+router = APIRouter(prefix="/suppliers", tags=["suppliers"])
+# Only mutating endpoints are module-gated — supplier names are read from
+# Compras and Inventario too.
+_require_proveedores = Depends(require_module("proveedores"))
 
 
 def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> SupplierService:
@@ -31,7 +34,7 @@ async def list_suppliers(
     return PaginatedResponse(data=suppliers, total=total, page=page, page_size=page_size, pages=pages)
 
 
-@router.post("", response_model=SupplierRead, status_code=201)
+@router.post("", response_model=SupplierRead, status_code=201, dependencies=[_require_proveedores])
 async def create_supplier(current_user: CurrentUser, data: SupplierCreate, service: Annotated[SupplierService, Depends(get_service)]):
     return await service.create_supplier(current_user.company_id, data)
 
@@ -41,12 +44,12 @@ async def get_supplier(current_user: CurrentUser, id: str, service: Annotated[Su
     return await service.get_supplier(current_user.company_id, id)
 
 
-@router.put("/{id}", response_model=SupplierRead)
+@router.put("/{id}", response_model=SupplierRead, dependencies=[_require_proveedores])
 async def update_supplier(current_user: CurrentUser, id: str, data: SupplierUpdate, service: Annotated[SupplierService, Depends(get_service)]):
     return await service.update_supplier(current_user.company_id, id, data)
 
 
-@router.delete("/{id}", response_model=MessageResponse)
+@router.delete("/{id}", response_model=MessageResponse, dependencies=[_require_proveedores])
 async def delete_supplier(current_user: CurrentUser, id: str, service: Annotated[SupplierService, Depends(get_service)]):
     await service.delete_supplier(current_user.company_id, id)
     return MessageResponse(message=f"Supplier '{id}' deleted")

@@ -13,9 +13,15 @@ from src.domains.products.models import Product
 from src.domains.sales.models import Sale, SaleStatus
 from src.domains.suppliers.models import Supplier
 from src.shared.database import get_session
-from src.shared.middleware.auth import CurrentUser, require_module
+from src.shared.middleware.auth import CurrentUser
 
-router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(require_module("dashboard"))])
+# Not module-gated on purpose: this is read-only (a single GET /kpis) and it
+# aggregates across every other domain (sales, products, customers,
+# inventory) — there's nothing meaningful left to restrict once every
+# domain's own reads are open to any authenticated company member. The
+# "dashboard" module key still exists in the frontend's module picker purely
+# as a nav-visibility toggle (Sidebar/AppShell), not a backend permission.
+router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 @router.get("/kpis", response_model=KpiPanel)

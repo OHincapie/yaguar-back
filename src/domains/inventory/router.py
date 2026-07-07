@@ -13,7 +13,10 @@ from src.shared.database import get_session
 from src.shared.middleware.auth import CurrentUser, require_module
 from src.shared.types import PaginatedResponse
 
-router = APIRouter(prefix="/inventory", tags=["inventory"], dependencies=[Depends(require_module("inventario"))])
+router = APIRouter(prefix="/inventory", tags=["inventory"])
+# Only /adjust (a write) is module-gated — stock levels are read by
+# Compras/POS/Dashboard too.
+_require_inventario = Depends(require_module("inventario"))
 
 
 def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> InventoryService:
@@ -62,7 +65,7 @@ async def get_level(current_user: CurrentUser, product_id: str, service: Annotat
     return InventoryLevelRead(**level.model_dump(), is_below_min=level.stock_qty <= level.min_stock)
 
 
-@router.post("/{product_id}/adjust", response_model=InventoryLevelRead)
+@router.post("/{product_id}/adjust", response_model=InventoryLevelRead, dependencies=[_require_inventario])
 async def adjust_inventory(
     current_user: CurrentUser, product_id: str, data: InventoryAdjust, service: Annotated[InventoryService, Depends(get_service)]
 ):

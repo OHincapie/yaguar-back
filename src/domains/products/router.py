@@ -18,7 +18,12 @@ from src.shared.middleware.auth import CurrentUser, require_module
 from src.shared.types import MessageResponse, PaginatedResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-router = APIRouter(prefix="/products", tags=["products"], dependencies=[Depends(require_module("inventario"))])
+router = APIRouter(prefix="/products", tags=["products"])
+# Only mutating endpoints are module-gated — GET endpoints stay open to any
+# authenticated company member. Products are referenced by name/price from
+# almost every other module's pages (Ventas, Compras, POS, Dashboard...);
+# gating reads here broke all of them for a "member" without "inventario".
+_require_inventario = Depends(require_module("inventario"))
 
 
 def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> ProductService:
@@ -41,7 +46,7 @@ async def list_products(
     return PaginatedResponse(data=products, total=total, page=page, page_size=page_size, pages=pages)
 
 
-@router.post("", response_model=ProductRead, status_code=201)
+@router.post("", response_model=ProductRead, status_code=201, dependencies=[_require_inventario])
 async def create_product(current_user: CurrentUser, data: ProductCreate, service: Annotated[ProductService, Depends(get_service)]):
     return await service.create_product(current_user.company_id, data)
 
@@ -51,12 +56,12 @@ async def get_product(current_user: CurrentUser, sku: str, service: Annotated[Pr
     return await service.get_product(current_user.company_id, sku)
 
 
-@router.put("/{sku}", response_model=ProductRead)
+@router.put("/{sku}", response_model=ProductRead, dependencies=[_require_inventario])
 async def update_product(current_user: CurrentUser, sku: str, data: ProductUpdate, service: Annotated[ProductService, Depends(get_service)]):
     return await service.update_product(current_user.company_id, sku, data)
 
 
-@router.delete("/{sku}", response_model=MessageResponse)
+@router.delete("/{sku}", response_model=MessageResponse, dependencies=[_require_inventario])
 async def delete_product(current_user: CurrentUser, sku: str, service: Annotated[ProductService, Depends(get_service)]):
     await service.delete_product(current_user.company_id, sku)
     return MessageResponse(message=f"Product '{sku}' deleted")
@@ -67,7 +72,7 @@ async def get_components(current_user: CurrentUser, sku: str, service: Annotated
     return await service.get_components(current_user.company_id, sku)
 
 
-@router.put("/{sku}/components", response_model=list[ProductComponentRead])
+@router.put("/{sku}/components", response_model=list[ProductComponentRead], dependencies=[_require_inventario])
 async def set_components(
     current_user: CurrentUser,
     sku: str,
@@ -89,6 +94,6 @@ async def list_categories(current_user: CurrentUser, service: Annotated[ProductS
     return await service.list_categories(current_user.company_id)
 
 
-@categories_router.post("", response_model=CategoryRead, status_code=201)
+@categories_router.post("", response_model=CategoryRead, status_code=201, dependencies=[_require_inventario])
 async def create_category(current_user: CurrentUser, data: CategoryCreate, service: Annotated[ProductService, Depends(get_product_service)]):
     return await service.create_category(current_user.company_id, data)

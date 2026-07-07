@@ -11,7 +11,10 @@ from src.shared.database import get_session
 from src.shared.middleware.auth import CurrentUser, require_module
 from src.shared.types import MessageResponse, PaginatedResponse
 
-router = APIRouter(prefix="/customers", tags=["customers"], dependencies=[Depends(require_module("clientes"))])
+router = APIRouter(prefix="/customers", tags=["customers"])
+# Only mutating endpoints are module-gated — customer names are read from
+# Ventas, POS and Dashboard too.
+_require_clientes = Depends(require_module("clientes"))
 
 
 def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> CustomerService:
@@ -35,7 +38,7 @@ async def list_customers(
     return PaginatedResponse(data=customers, total=total, page=page, page_size=page_size, pages=pages)
 
 
-@router.post("", response_model=CustomerRead, status_code=201)
+@router.post("", response_model=CustomerRead, status_code=201, dependencies=[_require_clientes])
 async def create_customer(current_user: CurrentUser, data: CustomerCreate, service: Annotated[CustomerService, Depends(get_service)]):
     return await service.create_customer(current_user.company_id, data)
 
@@ -45,12 +48,12 @@ async def get_customer(current_user: CurrentUser, id: str, service: Annotated[Cu
     return await service.get_customer(current_user.company_id, id)
 
 
-@router.put("/{id}", response_model=CustomerRead)
+@router.put("/{id}", response_model=CustomerRead, dependencies=[_require_clientes])
 async def update_customer(current_user: CurrentUser, id: str, data: CustomerUpdate, service: Annotated[CustomerService, Depends(get_service)]):
     return await service.update_customer(current_user.company_id, id, data)
 
 
-@router.delete("/{id}", response_model=MessageResponse)
+@router.delete("/{id}", response_model=MessageResponse, dependencies=[_require_clientes])
 async def delete_customer(current_user: CurrentUser, id: str, service: Annotated[CustomerService, Depends(get_service)]):
     await service.delete_customer(current_user.company_id, id)
     return MessageResponse(message=f"Customer '{id}' deleted")

@@ -21,7 +21,8 @@ from src.shared.database import get_session
 from src.shared.middleware.auth import CurrentUser, require_module
 from src.shared.types import PaginatedResponse
 
-router = APIRouter(prefix="/purchases", tags=["purchases"], dependencies=[Depends(require_module("compras"))])
+router = APIRouter(prefix="/purchases", tags=["purchases"])
+_require_compras = Depends(require_module("compras"))
 
 
 def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> PurchaseService:
@@ -51,7 +52,7 @@ async def list_purchases(
     return PaginatedResponse(data=purchases, total=total, page=page, page_size=page_size, pages=pages)
 
 
-@router.post("", response_model=PurchaseRead, status_code=201)
+@router.post("", response_model=PurchaseRead, status_code=201, dependencies=[_require_compras])
 async def create_purchase(current_user: CurrentUser, data: PurchaseCreate, service: Annotated[PurchaseService, Depends(get_service)]):
     return await service.create_purchase(current_user.company_id, data)
 
@@ -61,7 +62,7 @@ async def get_purchase(current_user: CurrentUser, code: str, service: Annotated[
     return await service.get_purchase(current_user.company_id, code)
 
 
-@router.put("/{code}/status", response_model=PurchaseRead)
+@router.put("/{code}/status", response_model=PurchaseRead, dependencies=[_require_compras])
 async def update_status(current_user: CurrentUser, code: str, data: PurchaseStatusUpdate, service: Annotated[PurchaseService, Depends(get_service)]):
     return await service.update_status(current_user.company_id, code, data)
 
@@ -71,6 +72,6 @@ async def get_lines(current_user: CurrentUser, code: str, service: Annotated[Pur
     return await service.get_lines(current_user.company_id, code)
 
 
-@router.post("/{code}/receive", response_model=PurchaseRead)
+@router.post("/{code}/receive", response_model=PurchaseRead, dependencies=[_require_compras])
 async def receive_purchase(current_user: CurrentUser, code: str, service: Annotated[PurchaseService, Depends(get_service)]):
     return await service.receive(current_user.company_id, code)
