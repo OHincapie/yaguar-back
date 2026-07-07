@@ -1,7 +1,9 @@
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.domains.products.models import Category, Product, ProductComponent
+from src.shared.middleware.errors import ConflictError
 
 
 class ProductRepository:
@@ -60,7 +62,13 @@ class ProductRepository:
 
     async def delete(self, product: Product) -> None:
         await self.session.delete(product)
-        await self.session.commit()
+        try:
+            await self.session.commit()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            raise ConflictError(
+                f"Can't delete '{product.sku}' — it has inventory, purchase, or sale records tied to it"
+            ) from exc
 
     async def get_all_categories(self, company_id: str) -> list[Category]:
         result = await self.session.exec(select(Category).where(Category.company_id == company_id))  # type: ignore

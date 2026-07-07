@@ -1,7 +1,9 @@
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.domains.suppliers.models import Supplier, SupplierStatus
+from src.shared.middleware.errors import ConflictError
 
 
 class SupplierRepository:
@@ -47,4 +49,10 @@ class SupplierRepository:
 
     async def delete(self, supplier: Supplier) -> None:
         await self.session.delete(supplier)
-        await self.session.commit()
+        try:
+            await self.session.commit()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            raise ConflictError(
+                f"Can't delete '{supplier.code}' — it has products or purchases tied to it"
+            ) from exc

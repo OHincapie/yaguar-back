@@ -26,9 +26,11 @@ class SaleLineRead(BaseModel):
 class SaleCreate(BaseModel):
     customer_id: str
     payment_method: PaymentMethod = PaymentMethod.EFECTIVO
-    status: SaleStatus = SaleStatus.PENDIENTE
     notes: str | None = None
     lines: list[SaleLineCreate] = []
+    # No `status` field on purpose — SaleService.create_sale derives it from
+    # payment_method the same way regardless of caller (POS checkout, manual
+    # "Nueva venta"), so the two paths can't drift out of sync again.
 
 
 class SaleStatusUpdate(BaseModel):

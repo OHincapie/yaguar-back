@@ -9,7 +9,6 @@ from src.domains.inventory.service import InventoryService
 from src.domains.ledger.repository import LedgerRepository
 from src.domains.pos.schemas import CheckoutRequest, CheckoutResponse
 from src.domains.products.repository import ProductRepository
-from src.domains.sales.models import SaleStatus
 from src.domains.sales.repository import SaleRepository
 from src.domains.sales.schemas import SaleCreate, SaleLineCreate
 from src.domains.sales.service import SaleService
@@ -37,7 +36,6 @@ async def checkout(
     sale_data = SaleCreate(
         customer_id=data.customer_id,
         payment_method=data.payment_method,
-        status=SaleStatus.PAGADO if data.payment_method.value != "Crédito" else SaleStatus.PENDIENTE,
         notes=data.notes,
         lines=[SaleLineCreate(**line.model_dump()) for line in data.lines],
     )

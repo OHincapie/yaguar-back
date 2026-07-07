@@ -2,7 +2,7 @@ from src.domains.accounts.repository import AccountsRepository
 from src.domains.inventory.service import InventoryService
 from src.domains.ledger.models import LedgerCategory, LedgerEntry, LedgerType
 from src.domains.ledger.repository import LedgerRepository
-from src.domains.sales.models import Sale, SaleLine
+from src.domains.sales.models import PaymentMethod, Sale, SaleLine, SaleStatus
 from src.domains.sales.repository import SaleRepository
 from src.domains.sales.schemas import SaleCreate, SaleLineCreate, SaleStatusUpdate, SaleUpdate
 from src.shared.middleware.errors import NotFoundError
@@ -55,6 +55,10 @@ class SaleService:
         code = f"V-{count + 1:05d}"
 
         subtotal, discount_amount, tax_amount, total = await self._compute_amounts(company_id, data.lines)
+        # Same rule everywhere a sale gets created (POS checkout, manual
+        # "Nueva venta"): credit sales start unpaid, everything else (cash,
+        # card, transfer) is settled on the spot.
+        status = SaleStatus.PENDIENTE if data.payment_method == PaymentMethod.CREDITO else SaleStatus.PAGADO
         sale = Sale(
             company_id=company_id,
             code=code,
@@ -64,7 +68,7 @@ class SaleService:
             tax_amount=tax_amount,
             total=total,
             payment_method=data.payment_method,
-            status=data.status,
+            status=status,
             notes=data.notes,
         )
 

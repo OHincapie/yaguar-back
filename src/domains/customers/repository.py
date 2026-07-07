@@ -1,7 +1,9 @@
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.domains.customers.models import Customer, CustomerStatus, CustomerType
+from src.shared.middleware.errors import ConflictError
 
 
 class CustomerRepository:
@@ -57,4 +59,8 @@ class CustomerRepository:
 
     async def delete(self, customer: Customer) -> None:
         await self.session.delete(customer)
-        await self.session.commit()
+        try:
+            await self.session.commit()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            raise ConflictError(f"Can't delete '{customer.code}' — it has sales tied to it") from exc
