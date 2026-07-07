@@ -66,8 +66,37 @@ JWT in an `Authorization: Bearer` header, claims `sub` (user_id) and `cid` (comp
 `CurrentUser = Annotated[AuthContext, Depends(get_current_user)]` is the dependency
 every protected route uses. Switching companies (`POST /auth/switch-company`) just
 issues a new token with a different `cid` — a user can belong to multiple companies via
-`UserCompany` (role: owner/admin/member), but **roles aren't enforced anywhere yet** —
-any authenticated member can do anything in their current company.
+`UserCompany` (role: owner/admin/member).
+
+**Roles and per-module permissions (added 2026-07-07)**: `get_current_user` looks up
+the caller's `UserCompany` row *fresh on every request* (not embedded in the JWT) to
+get `role` and `modules` — a deliberate choice over the cheaper JWT-embedded approach,
+so revoking a "member"'s access to a module takes effect immediately instead of on
+their next login. `AuthContext.has_module(key)` is the check: owner/admin always pass;
+"member" only passes if `key` is in their `modules` list (JSONB column on
+`UserCompany`, keys defined in `accounts.models.MODULE_KEYS` — keep in sync with the
+frontend's `nav` ids).
+
+**Only mutating endpoints (POST/PUT/PATCH/DELETE) are gated by `require_module()`,
+applied per-route, not per-router.** This was *not* the first design — the first pass
+gated entire routers including GET, and broke immediately in testing: Inventario reads
+Suppliers for names, Ventas/POS/Compras read Products, POS/Ventas/Dashboard read
+Customers, Dashboard aggregates across everything. A "member" with only `inventario`
+got a 403 crash loading Inventario itself. Any authenticated company member can now
+**read** across the whole business (see each router file for the exact split — the
+convention is `_require_<module> = Depends(require_module("<module>"))` declared once
+near the top, then referenced in `dependencies=[...]` on each write route). `dashboard`
+has no gate left at all — its one endpoint is a read-only KPI aggregate, and there's
+nothing left to restrict once every domain's reads are open. `require_owner_or_admin`
+is the separate, role-only (not module) check used for `/auth/users` (managing other
+users) and `PUT /auth/settings` (company-wide config) — account-level actions, not tied
+to a business module.
+
+`POST /auth/users` creates a user directly with a password the admin sets (no email
+invitation flow exists — there's no email-sending infrastructure in this app at all).
+If the email already exists as a `User` in a *different* company, it reuses that user
+and just adds a new `UserCompany` membership rather than erroring — a person can belong
+to more than one company.
 
 ## Product kits/bundles
 
