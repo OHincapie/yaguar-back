@@ -1,7 +1,6 @@
 from pydantic import BaseModel
 
-from src.domains.sales.models import PaymentMethod
-from src.domains.sales.schemas import SaleRead
+from src.domains.sales.schemas import PaymentLine, SaleRead
 
 
 class CheckoutLine(BaseModel):
@@ -12,8 +11,9 @@ class CheckoutLine(BaseModel):
 
 
 class CheckoutRequest(BaseModel):
-    customer_id: str
-    payment_method: PaymentMethod = PaymentMethod.EFECTIVO
+    # None = walk-in/casual sale, no buyer registered.
+    customer_id: str | None = None
+    payments: list[PaymentLine]
     lines: list[CheckoutLine]
     notes: str | None = None
 

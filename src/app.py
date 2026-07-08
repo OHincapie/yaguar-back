@@ -12,7 +12,7 @@ from src.domains.ledger.router import router as ledger_router
 from src.domains.pos.router import router as pos_router
 from src.domains.products.router import categories_router, router as products_router
 from src.domains.purchases.router import router as purchases_router
-from src.domains.sales.router import router as sales_router
+from src.domains.sales.router import payment_methods_router, router as sales_router
 from src.domains.suppliers.router import router as suppliers_router
 from src.shared.middleware.errors import register_error_handlers
 from src.shared.settings import settings
@@ -49,6 +49,7 @@ app.include_router(suppliers_router, prefix=API_PREFIX)
 app.include_router(purchases_router, prefix=API_PREFIX)
 app.include_router(customers_router, prefix=API_PREFIX)
 app.include_router(sales_router, prefix=API_PREFIX)
+app.include_router(payment_methods_router, prefix=API_PREFIX)
 app.include_router(ledger_router, prefix=API_PREFIX)
 app.include_router(pos_router, prefix=API_PREFIX)
 app.include_router(dashboard_router, prefix=API_PREFIX)

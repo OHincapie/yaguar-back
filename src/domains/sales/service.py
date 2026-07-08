@@ -2,10 +2,18 @@ from src.domains.accounts.repository import AccountsRepository
 from src.domains.inventory.service import InventoryService
 from src.domains.ledger.models import LedgerCategory, LedgerEntry, LedgerType
 from src.domains.ledger.repository import LedgerRepository
-from src.domains.sales.models import PaymentMethod, Sale, SaleLine, SaleStatus
-from src.domains.sales.repository import SaleRepository
-from src.domains.sales.schemas import SaleCreate, SaleLineCreate, SaleStatusUpdate, SaleUpdate
-from src.shared.middleware.errors import NotFoundError
+from src.domains.sales.models import PaymentMethodConfig, Sale, SaleLine, SalePayment, SaleStatus
+from src.domains.sales.repository import PaymentMethodRepository, SaleRepository
+from src.domains.sales.schemas import (
+    PaymentLine,
+    PaymentMethodCreate,
+    PaymentMethodUpdate,
+    SaleCreate,
+    SaleLineCreate,
+    SaleStatusUpdate,
+    SaleUpdate,
+)
+from src.shared.middleware.errors import BusinessError, ConflictError, NotFoundError
 
 
 class SaleService:
@@ -15,11 +23,13 @@ class SaleService:
         inventory_service: InventoryService,
         ledger_repo: LedgerRepository,
         accounts_repo: AccountsRepository,
+        payment_method_repo: PaymentMethodRepository,
     ):
         self.repo = repo
         self.inventory_service = inventory_service
         self.ledger_repo = ledger_repo
         self.accounts_repo = accounts_repo
+        self.payment_method_repo = payment_method_repo
 
     async def list_sales(self, company_id: str, status, customer_id: str | None, from_date, to_date, page: int, page_size: int):
         offset = (page - 1) * page_size
@@ -38,6 +48,10 @@ class SaleService:
         sale = await self.get_sale(company_id, code)
         return await self.repo.get_lines(sale.id)
 
+    async def get_payments(self, company_id: str, code: str) -> list[SalePayment]:
+        sale = await self.get_sale(company_id, code)
+        return await self.repo.get_payments(sale.id)
+
     async def _compute_amounts(self, company_id: str, lines: list[SaleLineCreate]) -> tuple[float, float, float, float]:
         """Returns (subtotal, discount_amount, tax_amount, total) using the
         company's current discount_pct/tax_pct — same rule for create and edit,
@@ -50,15 +64,57 @@ class SaleService:
         total = subtotal - discount_amount + tax_amount
         return subtotal, discount_amount, tax_amount, total
 
+    async def _resolve_payments(
+        self, company_id: str, payments: list[PaymentLine], total: float, customer_id: str | None
+    ) -> tuple[list[PaymentMethodConfig], str, SaleStatus]:
+        """Validates a proposed set of payment lines against the sale total
+        and the company's payment-method rules. Returns the resolved
+        PaymentMethodConfig rows (same order as `payments`), a display
+        summary string (e.g. "Efectivo + Transferencia"), and the resulting
+        SaleStatus. Doesn't create SalePayment rows — the caller does that
+        once it has a Sale.id (mirrors how SaleLine is built)."""
+        methods_by_id = {m.id: m for m in await self.payment_method_repo.get_by_ids(company_id, [p.payment_method_id for p in payments])}
+
+        resolved: list[PaymentMethodConfig] = []
+        paid_sum = 0.0
+        for p in payments:
+            method = methods_by_id.get(p.payment_method_id)
+            if not method or not method.is_active:
+                raise BusinessError(f"Unknown or inactive payment method: '{p.payment_method_id}'")
+            if p.amount <= 0:
+                raise BusinessError("Each payment line needs a positive amount")
+            resolved.append(method)
+            paid_sum += p.amount
+
+        # Floating point tolerance, not an exact-cents requirement.
+        if abs(paid_sum - total) > 0.01:
+            raise BusinessError(f"Payments must add up to the total ({total:.2f}), got {paid_sum:.2f}")
+
+        credit_methods = [m for m in resolved if m.is_credit]
+        if credit_methods:
+            # Deliberately all-or-nothing — not a partial-payment/accounts
+            # receivable feature. Splitting real money across several
+            # methods is fine; mixing real money with "owed" isn't
+            # supported (Customer.saldo isn't wired to anything yet, so
+            # there's nowhere for a partial credit balance to live).
+            if len(payments) > 1:
+                raise BusinessError("A credit payment can't be combined with other payment methods")
+            if customer_id is None:
+                raise BusinessError("A walk-in sale (no customer) can't be paid on credit")
+
+        status = SaleStatus.PENDIENTE if credit_methods else SaleStatus.PAGADO
+        # dict.fromkeys instead of set(): de-dupes repeated methods while
+        # keeping the order the user entered them in.
+        display = " + ".join(dict.fromkeys(m.name for m in resolved))
+        return resolved, display, status
+
     async def create_sale(self, company_id: str, data: SaleCreate) -> Sale:
         count = await self.repo.count_for_company(company_id)
         code = f"V-{count + 1:05d}"
 
         subtotal, discount_amount, tax_amount, total = await self._compute_amounts(company_id, data.lines)
-        # Same rule everywhere a sale gets created (POS checkout, manual
-        # "Nueva venta"): credit sales start unpaid, everything else (cash,
-        # card, transfer) is settled on the spot.
-        status = SaleStatus.PENDIENTE if data.payment_method == PaymentMethod.CREDITO else SaleStatus.PAGADO
+        _methods, payment_display, status = await self._resolve_payments(company_id, data.payments, total, data.customer_id)
+
         sale = Sale(
             company_id=company_id,
             code=code,
@@ -67,7 +123,7 @@ class SaleService:
             discount_amount=discount_amount,
             tax_amount=tax_amount,
             total=total,
-            payment_method=data.payment_method,
+            payment_method=payment_display,
             status=status,
             notes=data.notes,
         )
@@ -81,7 +137,8 @@ class SaleService:
             )
 
         lines = [SaleLine(sale_id=sale.id, **line.model_dump()) for line in data.lines]
-        sale = await self.repo.create(sale, lines)
+        payments = [SalePayment(sale_id=sale.id, payment_method_id=p.payment_method_id, amount=p.amount) for p in data.payments]
+        sale = await self.repo.create(sale, lines, payments)
 
         await self.ledger_repo.create(
             LedgerEntry(
@@ -129,7 +186,43 @@ class SaleService:
 
             ledger_entry = await self.ledger_repo.get_by_reference(company_id, sale.id, "sale")
             if ledger_entry:
-                ledger_entry.credit = total
+                ledger_entry.credit = sale.total
                 await self.ledger_repo.update(ledger_entry)
 
+        if data.payments is not None:
+            _methods, payment_display, status = await self._resolve_payments(
+                company_id, data.payments, sale.total, sale.customer_id
+            )
+            payments = [
+                SalePayment(sale_id=sale.id, payment_method_id=p.payment_method_id, amount=p.amount)
+                for p in data.payments
+            ]
+            await self.repo.replace_payments(sale.id, payments)
+            sale.payment_method = payment_display
+            sale.status = status
+
         return await self.repo.update(sale)
+
+
+class PaymentMethodService:
+    def __init__(self, repo: PaymentMethodRepository):
+        self.repo = repo
+
+    async def list_methods(self, company_id: str, active_only: bool = False) -> list[PaymentMethodConfig]:
+        return await self.repo.get_all(company_id, active_only=active_only)
+
+    async def create_method(self, company_id: str, data: PaymentMethodCreate) -> PaymentMethodConfig:
+        existing = await self.repo.get_all(company_id)
+        if any(m.name.lower() == data.name.lower() for m in existing):
+            raise ConflictError(f"Payment method '{data.name}' already exists")
+        return await self.repo.create(PaymentMethodConfig(company_id=company_id, name=data.name, is_credit=data.is_credit))
+
+    async def update_method(self, company_id: str, id: str, data: PaymentMethodUpdate) -> PaymentMethodConfig:
+        method = await self.repo.get_by_id(company_id, id)
+        if not method:
+            raise NotFoundError("PaymentMethod", id)
+        if data.name is not None:
+            method.name = data.name
+        if data.is_active is not None:
+            method.is_active = data.is_active
+        return await self.repo.update(method)

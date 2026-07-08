@@ -39,6 +39,12 @@ class AccountsService:
             UserCompany(user_id=user.id, company_id=company.id, role=CompanyRole.OWNER)
         )
 
+        # Import here, not at module load, to avoid sales <-> accounts
+        # circular imports (SaleService already depends on AccountsRepository).
+        from src.domains.sales.repository import PaymentMethodRepository
+
+        await PaymentMethodRepository(self.repo.session).seed_defaults(company.id)
+
         token = create_access_token(user_id=user.id, company_id=company.id)
         return token, user, company
 

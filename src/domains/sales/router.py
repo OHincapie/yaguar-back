@@ -10,11 +10,21 @@ from src.domains.inventory.service import InventoryService
 from src.domains.ledger.repository import LedgerRepository
 from src.domains.products.repository import ProductRepository
 from src.domains.sales.models import SaleStatus
-from src.domains.sales.repository import SaleRepository
-from src.domains.sales.schemas import SaleCreate, SaleLineRead, SaleRead, SaleStatusUpdate, SaleUpdate
-from src.domains.sales.service import SaleService
+from src.domains.sales.repository import PaymentMethodRepository, SaleRepository
+from src.domains.sales.schemas import (
+    PaymentMethodCreate,
+    PaymentMethodRead,
+    PaymentMethodUpdate,
+    SaleCreate,
+    SaleLineRead,
+    SalePaymentRead,
+    SaleRead,
+    SaleStatusUpdate,
+    SaleUpdate,
+)
+from src.domains.sales.service import PaymentMethodService, SaleService
 from src.shared.database import get_session
-from src.shared.middleware.auth import CurrentUser, require_module
+from src.shared.middleware.auth import CurrentUser, require_module, require_owner_or_admin
 from src.shared.types import PaginatedResponse
 
 router = APIRouter(prefix="/sales", tags=["sales"])
@@ -28,6 +38,7 @@ def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> SaleS
         InventoryService(InventoryRepository(session), ProductRepository(session)),
         LedgerRepository(session),
         AccountsRepository(session),
+        PaymentMethodRepository(session),
     )
 
 
@@ -73,3 +84,67 @@ async def update_sale(current_user: CurrentUser, code: str, data: SaleUpdate, se
 @router.get("/{code}/lines", response_model=list[SaleLineRead])
 async def get_lines(current_user: CurrentUser, code: str, service: Annotated[SaleService, Depends(get_service)]):
     return await service.get_lines(current_user.company_id, code)
+
+
+@router.get("/{code}/payments", response_model=list[SalePaymentRead])
+async def get_payments(
+    current_user: CurrentUser,
+    code: str,
+    service: Annotated[SaleService, Depends(get_service)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    payments = await service.get_payments(current_user.company_id, code)
+    methods = {m.id: m for m in await PaymentMethodRepository(session).get_all(current_user.company_id)}
+    return [
+        SalePaymentRead(
+            id=p.id,
+            sale_id=p.sale_id,
+            payment_method_id=p.payment_method_id,
+            payment_method_name=methods[p.payment_method_id].name if p.payment_method_id in methods else "—",
+            amount=p.amount,
+        )
+        for p in payments
+    ]
+
+
+# Payment methods are company-wide configuration, not tied to the "ventas"
+# module specifically (POS/chat use them too) — reads open to any
+# authenticated member, writes owner/admin-only, same pattern as
+# /auth/settings.
+payment_methods_router = APIRouter(prefix="/payment-methods", tags=["sales"])
+
+
+def get_payment_method_service(session: Annotated[AsyncSession, Depends(get_session)]) -> PaymentMethodService:
+    return PaymentMethodService(PaymentMethodRepository(session))
+
+
+@payment_methods_router.get("", response_model=list[PaymentMethodRead])
+async def list_payment_methods(
+    current_user: CurrentUser,
+    service: Annotated[PaymentMethodService, Depends(get_payment_method_service)],
+    active_only: bool = False,
+):
+    return await service.list_methods(current_user.company_id, active_only=active_only)
+
+
+@payment_methods_router.post(
+    "", response_model=PaymentMethodRead, status_code=201, dependencies=[Depends(require_owner_or_admin)]
+)
+async def create_payment_method(
+    current_user: CurrentUser,
+    data: PaymentMethodCreate,
+    service: Annotated[PaymentMethodService, Depends(get_payment_method_service)],
+):
+    return await service.create_method(current_user.company_id, data)
+
+
+@payment_methods_router.put(
+    "/{id}", response_model=PaymentMethodRead, dependencies=[Depends(require_owner_or_admin)]
+)
+async def update_payment_method(
+    current_user: CurrentUser,
+    id: str,
+    data: PaymentMethodUpdate,
+    service: Annotated[PaymentMethodService, Depends(get_payment_method_service)],
+):
+    return await service.update_method(current_user.company_id, id, data)

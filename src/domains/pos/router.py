@@ -9,7 +9,7 @@ from src.domains.inventory.service import InventoryService
 from src.domains.ledger.repository import LedgerRepository
 from src.domains.pos.schemas import CheckoutRequest, CheckoutResponse
 from src.domains.products.repository import ProductRepository
-from src.domains.sales.repository import SaleRepository
+from src.domains.sales.repository import PaymentMethodRepository, SaleRepository
 from src.domains.sales.schemas import SaleCreate, SaleLineCreate
 from src.domains.sales.service import SaleService
 from src.shared.database import get_session
@@ -24,6 +24,7 @@ def get_sale_service(session: Annotated[AsyncSession, Depends(get_session)]) -> 
         InventoryService(InventoryRepository(session), ProductRepository(session)),
         LedgerRepository(session),
         AccountsRepository(session),
+        PaymentMethodRepository(session),
     )
 
 
@@ -35,7 +36,7 @@ async def checkout(
 ):
     sale_data = SaleCreate(
         customer_id=data.customer_id,
-        payment_method=data.payment_method,
+        payments=data.payments,
         notes=data.notes,
         lines=[SaleLineCreate(**line.model_dump()) for line in data.lines],
     )
