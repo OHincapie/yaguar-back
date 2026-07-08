@@ -118,16 +118,52 @@ drift if the company later changes its settings. Editing a sale's lines
 (`PUT /sales/{code}`) recomputes all four and also patches the linked ledger entry's
 credit so accounting doesn't go stale.
 
-`Sale.status` (pagado/pendiente) is derived automatically from `payment_method` inside
-`SaleService.create_sale` — Crédito → pendiente, everything else → pagado immediately.
-This is the *only* place that decides it; `SaleCreate` has no `status` field on purpose,
-so the POS checkout path and the manual "create sale" path can't drift apart (they used
-to — POS auto-computed it, manual sales always defaulted to pendiente until this was
-unified).
+`Sale.status` (pagado/pendiente) is derived automatically from the payment methods used
+inside `SaleService._resolve_payments` — any credit method → pendiente, everything else
+→ pagado immediately. This is the *only* place that decides it; `SaleCreate` has no
+`status` field on purpose, so the POS checkout path, the manual "create sale" path, and
+the chat's `create_sale` tool can't drift apart (POS and manual sales used to compute
+this differently until it was unified).
 
 Editing a sale's lines reverses the old lines' stock impact
 (`InventoryService.reverse_sale`, mirrors `apply_sale` including kit expansion) before
 reapplying the new ones.
+
+## Split payments and configurable payment methods (added 2026-07-08)
+
+Payment methods are a company-scoped table (`payment_methods`), not a hardcoded enum —
+every company gets 4 defaults seeded (Efectivo/Tarjeta/Transferencia/Crédito, matching
+the old enum's values) on registration (`AccountsService.register`), and can add more
+(e.g. "Nequi") via `POST /payment-methods` (owner/admin only, mirrors
+`require_owner_or_admin`). `PaymentMethodConfig.is_credit` marks which ones mean "not
+paid yet" rather than real money changing hands.
+
+A sale can be paid across several methods at once — `SaleCreate.payments` is a
+`list[PaymentLine]` (`payment_method_id` + `amount`), not one field, and a new
+`sale_payments` table holds one row per method used. `SaleService._resolve_payments`
+validates the set: amounts must sum to the sale's `total` (0.01 float tolerance), and
+credit is **deliberately all-or-nothing** — a credit line can't be combined with any
+other method in the same sale, and can't be used at all if the sale has no customer
+(`customer_id is None`). This is *not* a partial-payment/accounts-receivable feature —
+`Customer.saldo` isn't wired to anything real (see the Product kits section's sibling
+gotcha list — actually see below: it's a dormant field, same as `ltv`/`orders`/
+`due_date`), so there's nowhere for a partial credit balance to live. If that's ever
+built, it's a separate, bigger feature.
+
+`Sale.customer_id` is nullable — a walk-in/casual sale with no registered buyer. Turned
+out the live DB column was already nullable despite the old SQLModel field claiming
+otherwise (no `Optional[str]`), so no migration was needed for that part; only the
+`payment_methods`/`sale_payments` tables were new. `Sale.payment_method` is now a
+denormalized *display* string (e.g. `"Efectivo + Transferencia"`), recomputed from the
+payment lines on every create/update — not the source of truth, just a convenience so
+listing sales doesn't need a join every time.
+
+**Dormant fields worth knowing about, so nobody's surprised nothing reacts to them**:
+`Customer.saldo`/`ltv`/`orders` and `Sale.due_date` are all columns that exist in the
+schema but that no business logic reads or writes anywhere — they're either seed data
+or reserved for a not-yet-built feature (accounts receivable, Mara the collections
+agent). Don't assume changing a sale's payment status will move `Customer.saldo`; it
+won't, nothing currently touches it.
 
 ## Purchases: cost sync
 
