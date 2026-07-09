@@ -144,6 +144,14 @@ class AccountsService:
             if not data.is_active and membership.role == CompanyRole.OWNER:
                 await self._ensure_not_last_owner(company_id, user_id)
             user.is_active = data.is_active
+        if data.password is not None:
+            # password_hash lives on the shared User row, not per-membership
+            # — if this person belongs to more than one company (possible
+            # via UserCompany), resetting it here changes their password
+            # everywhere, not just in this company. No "forgot password"
+            # email flow exists in this app, so this is the only recovery
+            # path for a locked-out user today.
+            user.password_hash = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
         await self.repo.create_user(user)  # add+commit+refresh, works for updates too
 
         return membership, user

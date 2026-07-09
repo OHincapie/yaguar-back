@@ -25,7 +25,7 @@ from src.domains.sales.schemas import (
 from src.domains.sales.service import PaymentMethodService, SaleService
 from src.shared.database import get_session
 from src.shared.middleware.auth import CurrentUser, require_module, require_owner_or_admin
-from src.shared.types import PaginatedResponse
+from src.shared.types import MessageResponse, PaginatedResponse
 
 router = APIRouter(prefix="/sales", tags=["sales"])
 # Only mutating endpoints are module-gated — sales are read by Dashboard too.
@@ -79,6 +79,12 @@ async def update_status(current_user: CurrentUser, code: str, data: SaleStatusUp
 @router.put("/{code}", response_model=SaleRead, dependencies=[_require_ventas])
 async def update_sale(current_user: CurrentUser, code: str, data: SaleUpdate, service: Annotated[SaleService, Depends(get_service)]):
     return await service.update_sale(current_user.company_id, code, data)
+
+
+@router.delete("/{code}", response_model=MessageResponse, dependencies=[_require_ventas])
+async def delete_sale(current_user: CurrentUser, code: str, service: Annotated[SaleService, Depends(get_service)]):
+    await service.delete_sale(current_user.company_id, code)
+    return MessageResponse(message=f"Sale '{code}' deleted")
 
 
 @router.get("/{code}/lines", response_model=list[SaleLineRead])

@@ -15,11 +15,12 @@ from src.domains.purchases.schemas import (
     PurchaseLineRead,
     PurchaseRead,
     PurchaseStatusUpdate,
+    PurchaseUpdate,
 )
 from src.domains.purchases.service import PurchaseService
 from src.shared.database import get_session
 from src.shared.middleware.auth import CurrentUser, require_module
-from src.shared.types import PaginatedResponse
+from src.shared.types import MessageResponse, PaginatedResponse
 
 router = APIRouter(prefix="/purchases", tags=["purchases"])
 _require_compras = Depends(require_module("compras"))
@@ -65,6 +66,17 @@ async def get_purchase(current_user: CurrentUser, code: str, service: Annotated[
 @router.put("/{code}/status", response_model=PurchaseRead, dependencies=[_require_compras])
 async def update_status(current_user: CurrentUser, code: str, data: PurchaseStatusUpdate, service: Annotated[PurchaseService, Depends(get_service)]):
     return await service.update_status(current_user.company_id, code, data)
+
+
+@router.put("/{code}", response_model=PurchaseRead, dependencies=[_require_compras])
+async def update_purchase(current_user: CurrentUser, code: str, data: PurchaseUpdate, service: Annotated[PurchaseService, Depends(get_service)]):
+    return await service.update_purchase(current_user.company_id, code, data)
+
+
+@router.delete("/{code}", response_model=MessageResponse, dependencies=[_require_compras])
+async def delete_purchase(current_user: CurrentUser, code: str, service: Annotated[PurchaseService, Depends(get_service)]):
+    await service.delete_purchase(current_user.company_id, code)
+    return MessageResponse(message=f"Purchase '{code}' deleted")
 
 
 @router.get("/{code}/lines", response_model=list[PurchaseLineRead])

@@ -83,3 +83,7 @@ class CompanyUserUpdate(BaseModel):
     role: CompanyRole | None = None
     modules: list[str] | None = None
     is_active: bool | None = None
+    # Lets an owner/admin reset another user's password directly — there's
+    # no "forgot password" email flow in this app, this is the only way a
+    # locked-out user gets back in.
+    password: str | None = None

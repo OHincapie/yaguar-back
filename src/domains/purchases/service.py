@@ -6,8 +6,14 @@ from src.domains.ledger.repository import LedgerRepository
 from src.domains.products.repository import ProductRepository
 from src.domains.purchases.models import Purchase, PurchaseLine, PurchaseStatus
 from src.domains.purchases.repository import PurchaseRepository
-from src.domains.purchases.schemas import PurchaseCreate, PurchaseStatusUpdate
+from src.domains.purchases.schemas import PurchaseCreate, PurchaseStatusUpdate, PurchaseUpdate
 from src.shared.middleware.errors import BusinessError, NotFoundError
+
+# Only a received purchase has had a real-world effect (stock added, a
+# ledger entry written by receive()) — editing or deleting it after that
+# would silently desync inventory/accounting from what actually happened.
+# A "cancelado" purchase never went through receive(), so it never touched
+# real data — still safe to edit or delete, e.g. cleaning up a mistake.
 
 
 class PurchaseService:
@@ -66,6 +72,39 @@ class PurchaseService:
         purchase = await self.get_purchase(company_id, code)
         purchase.status = data.status
         return await self.repo.update(purchase)
+
+    async def update_purchase(self, company_id: str, code: str, data: PurchaseUpdate) -> Purchase:
+        purchase = await self.get_purchase(company_id, code)
+        if purchase.status == PurchaseStatus.RECIBIDO:
+            raise BusinessError("Can't edit a purchase that's already been received")
+
+        if data.supplier_id is not None:
+            purchase.supplier_id = data.supplier_id
+        if data.eta is not None:
+            purchase.eta = data.eta
+        if data.notes is not None:
+            purchase.notes = data.notes
+
+        if data.lines is not None:
+            for line in data.lines:
+                product = await self.product_repo.get_by_id(company_id, line.product_id)
+                if product and product.is_bundle:
+                    raise BusinessError(
+                        f"'{product.sku}' is a kit — you can't purchase it directly, buy its components instead"
+                    )
+            purchase.total = sum(line.qty * line.unit_cost for line in data.lines)
+            await self.repo.replace_lines(
+                purchase.id, [PurchaseLine(purchase_id=purchase.id, **line.model_dump()) for line in data.lines]
+            )
+
+        return await self.repo.update(purchase)
+
+    async def delete_purchase(self, company_id: str, code: str) -> None:
+        purchase = await self.get_purchase(company_id, code)
+        if purchase.status == PurchaseStatus.RECIBIDO:
+            raise BusinessError("Can't delete a purchase that's already been received")
+        await self.repo.replace_lines(purchase.id, [])
+        await self.repo.delete(purchase)
 
     async def receive(self, company_id: str, code: str) -> Purchase:
         purchase = await self.get_purchase(company_id, code)

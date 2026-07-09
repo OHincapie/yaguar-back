@@ -100,6 +100,10 @@ class SaleRepository:
             await self.session.refresh(payment)
         return payments
 
+    async def delete(self, sale: Sale) -> None:
+        await self.session.delete(sale)
+        await self.session.commit()
+
 
 class PaymentMethodRepository:
     def __init__(self, session: AsyncSession):

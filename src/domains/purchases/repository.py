@@ -63,3 +63,18 @@ class PurchaseRepository:
         await self.session.commit()
         await self.session.refresh(purchase)
         return purchase
+
+    async def replace_lines(self, purchase_id: str, lines: list[PurchaseLine]) -> list[PurchaseLine]:
+        existing = await self.get_lines(purchase_id)
+        for line in existing:
+            await self.session.delete(line)
+        for line in lines:
+            self.session.add(line)
+        await self.session.commit()
+        for line in lines:
+            await self.session.refresh(line)
+        return lines
+
+    async def delete(self, purchase: Purchase) -> None:
+        await self.session.delete(purchase)
+        await self.session.commit()

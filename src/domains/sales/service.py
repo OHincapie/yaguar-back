@@ -203,6 +203,23 @@ class SaleService:
 
         return await self.repo.update(sale)
 
+    async def delete_sale(self, company_id: str, code: str) -> None:
+        sale = await self.get_sale(company_id, code)
+
+        lines = await self.repo.get_lines(sale.id)
+        for line in lines:
+            await self.inventory_service.reverse_sale(
+                company_id=company_id, product_id=line.product_id, qty=line.qty, sale_id=sale.id
+            )
+
+        ledger_entry = await self.ledger_repo.get_by_reference(company_id, sale.id, "sale")
+        if ledger_entry:
+            await self.ledger_repo.delete(ledger_entry)
+
+        await self.repo.replace_lines(sale.id, [])
+        await self.repo.replace_payments(sale.id, [])
+        await self.repo.delete(sale)
+
 
 class PaymentMethodService:
     def __init__(self, repo: PaymentMethodRepository):

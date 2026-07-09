@@ -54,3 +54,7 @@ class LedgerRepository:
         await self.session.commit()
         await self.session.refresh(entry)
         return entry
+
+    async def delete(self, entry: LedgerEntry) -> None:
+        await self.session.delete(entry)
+        await self.session.commit()

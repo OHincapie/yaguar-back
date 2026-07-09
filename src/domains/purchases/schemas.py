@@ -33,6 +33,16 @@ class PurchaseStatusUpdate(BaseModel):
     status: PurchaseStatus
 
 
+class PurchaseUpdate(BaseModel):
+    supplier_id: str | None = None
+    eta: Date | None = None
+    notes: str | None = None
+    # When provided, replaces the purchase's lines entirely and recalculates
+    # total. Only allowed while the purchase hasn't been received/cancelled
+    # yet — see PurchaseService.update_purchase.
+    lines: list[PurchaseLineCreate] | None = None
+
+
 class PurchaseRead(BaseModel):
     id: str
     code: str
