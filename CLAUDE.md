@@ -106,6 +106,19 @@ resetting it from one company's Equipo screen changes that person's password
 everywhere, including any other company they belong to — worth knowing if the
 multi-company-membership case ever comes up in a support conversation.
 
+**Forced password change (added 2026-07-09)**: `User.must_change_password` is set
+`True` whenever someone *other* than the user picked their current password — on
+creation via `POST /auth/users` (admin-set temp password) and on an admin reset via
+`CompanyUserUpdate.password`. `POST /auth/register` (a user creating their own company)
+leaves it `False`, since they chose their own password there. `GET /auth/me` returns
+the flag; the frontend blocks its entire app behind a "set a new password" screen while
+it's `True`. The only way to clear it is `POST /auth/change-password`
+(`ChangePasswordRequest{current_password, new_password}`) — self-service, requires the
+current password even though the caller is already authenticated via JWT (a leaked/
+captured session token shouldn't be enough on its own to silently rotate someone's
+password). This endpoint doubles as a normal "change my password" action too, not just
+the forced flow — nothing gates it behind the flag being set.
+
 ## Product kits/bundles
 
 A product can be `is_bundle=True`, composed of N units of one or more *base* (non-bundle)
