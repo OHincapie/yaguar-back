@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, TypedDict
 
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -19,6 +20,8 @@ from src.domains.agents.llm import get_chat_model
 from src.domains.agents.models import AgentAlert
 from src.domains.agents.prompts import AGENT_SYSTEM_PROMPTS, AlertDraft
 from src.domains.agents.repository import AgentRepository
+from src.domains.ai_usage.models import AiUsageEvent
+from src.domains.ai_usage.repository import AiUsageRepository
 from src.shared.settings import settings
 
 
@@ -90,17 +93,41 @@ def build_proposal(candidate: dict[str, Any], draft: AlertDraft) -> dict[str, An
 
 def _build_graph(session: AsyncSession, checkpointer):
     repo = AgentRepository(session)
+    usage_repo = AiUsageRepository(session)
 
     async def compose(state: AgentState) -> dict[str, Any]:
         candidate = state["candidate"]
         model = get_chat_model().with_structured_output(AlertDraft)
         system = AGENT_SYSTEM_PROMPTS[state["agent_key"]]
+        # with_structured_output() returns only the parsed AlertDraft, not
+        # the underlying AIMessage — a callback is the least invasive way
+        # to get token usage out without restructuring this call (the
+        # alternative, include_raw=True, changes the return shape to
+        # {"raw", "parsed", "parsing_error"} and would ripple through every
+        # line below that assumes `draft` is already an AlertDraft).
+        usage_callback = UsageMetadataCallbackHandler()
         draft: AlertDraft = await model.ainvoke(
             [
                 ("system", system),
                 ("human", f"Datos de la situación detectada (ya calculados, no los inventes): {candidate}"),
-            ]
+            ],
+            config={"callbacks": [usage_callback]},
         )
+        # Not inside persist()/gate()'s interrupt-safety split — compose()
+        # itself never calls interrupt(), so (per the gotcha documented on
+        # persist() below) it only ever runs once per graph invocation, no
+        # risk of a duplicate usage row on resume.
+        for model_name, usage in usage_callback.usage_metadata.items():
+            await usage_repo.create(
+                AiUsageEvent(
+                    company_id=state["company_id"],
+                    source=f"agent:{state['agent_key']}",
+                    model=model_name,
+                    input_tokens=usage.get("input_tokens"),
+                    output_tokens=usage.get("output_tokens"),
+                    cached_input_tokens=(usage.get("input_token_details") or {}).get("cache_read"),
+                )
+            )
         return {"proposal": build_proposal(candidate, draft)}
 
     async def persist(state: AgentState) -> dict[str, Any]:
