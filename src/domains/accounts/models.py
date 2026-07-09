@@ -55,6 +55,14 @@ class User(SQLModel, table=True):
     password_hash: str = Field(max_length=255)
     name: str = Field(max_length=200)
     is_active: bool = Field(default=True)
+    # True whenever someone *other* than this user chose their current
+    # password — set on creation via /auth/users (admin-set temp password)
+    # and on an admin-triggered reset (CompanyUserUpdate.password). Someone
+    # registering their own company (POST /auth/register) picks their own
+    # password, so that path leaves this False. Cleared by
+    # POST /auth/change-password once the user sets their own. The frontend
+    # blocks the whole app behind a "set a new password" screen while true.
+    must_change_password: bool = Field(default=False)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc), sa_type=DateTime(timezone=True)
     )

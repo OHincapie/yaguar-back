@@ -4,7 +4,13 @@ import bcrypt
 
 from src.domains.accounts.models import MODULE_KEYS, Company, CompanyRole, User, UserCompany
 from src.domains.accounts.repository import AccountsRepository
-from src.domains.accounts.schemas import CompanyUserCreate, CompanyUserUpdate, LoginRequest, RegisterRequest
+from src.domains.accounts.schemas import (
+    ChangePasswordRequest,
+    CompanyUserCreate,
+    CompanyUserUpdate,
+    LoginRequest,
+    RegisterRequest,
+)
 from src.shared.middleware.auth import OWNER_ROLES, create_access_token
 from src.shared.middleware.errors import BusinessError, ConflictError, NotFoundError, UnauthorizedError
 
@@ -116,7 +122,11 @@ class AccountsService:
                 raise ConflictError(f"'{data.email}' is already a member of this company")
         else:
             password_hash = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
-            user = await self.repo.create_user(User(email=data.email, password_hash=password_hash, name=data.name))
+            # The admin chose this password, not the user — force them to
+            # pick their own on first login.
+            user = await self.repo.create_user(
+                User(email=data.email, password_hash=password_hash, name=data.name, must_change_password=True)
+            )
 
         membership = await self.repo.add_membership(
             UserCompany(user_id=user.id, company_id=company_id, role=data.role, modules=data.modules)
@@ -152,9 +162,29 @@ class AccountsService:
             # email flow exists in this app, so this is the only recovery
             # path for a locked-out user today.
             user.password_hash = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
+            # Same reasoning as account creation — the admin chose this
+            # password, so force a change on the user's next login.
+            user.must_change_password = True
         await self.repo.create_user(user)  # add+commit+refresh, works for updates too
 
         return membership, user
+
+    async def change_password(self, user_id: str, data: ChangePasswordRequest) -> User:
+        """Self-service — the logged-in user changes their own password.
+        Requires the current one even though they're already authenticated
+        via JWT: a captured/leaked session token shouldn't be enough on its
+        own to lock the real owner out by silently rotating the password.
+        Clears must_change_password regardless of whether it was set —
+        this also serves as a normal "change my password" action, not just
+        the forced-after-admin-reset flow."""
+        user = await self.repo.get_user(user_id)
+        if not user:
+            raise NotFoundError("User", user_id)
+        if not bcrypt.checkpw(data.current_password.encode(), user.password_hash.encode()):
+            raise UnauthorizedError("Current password is incorrect")
+        user.password_hash = bcrypt.hashpw(data.new_password.encode(), bcrypt.gensalt()).decode()
+        user.must_change_password = False
+        return await self.repo.create_user(user)
 
     async def remove_company_user(self, company_id: str, user_id: str) -> None:
         membership = await self.repo.get_membership(user_id, company_id)

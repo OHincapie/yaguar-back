@@ -43,6 +43,15 @@ class MeResponse(BaseModel):
     # Empty for owner/admin — the frontend should treat that as "all
     # modules", not "no modules"; see AuthContext.has_module on the backend.
     modules: list[str]
+    # True when someone else (an admin) chose this user's current password —
+    # the frontend blocks the whole app behind a "set a new password" screen
+    # while this is true. See User.must_change_password.
+    must_change_password: bool
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
 
 
 class CompanySettingsRead(BaseModel):

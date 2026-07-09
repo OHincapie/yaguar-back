@@ -5,6 +5,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.domains.accounts.repository import AccountsRepository
 from src.domains.accounts.schemas import (
+    ChangePasswordRequest,
     CompanyRead,
     CompanySettingsRead,
     CompanySettingsUpdate,
@@ -20,6 +21,7 @@ from src.domains.accounts.schemas import (
 from src.domains.accounts.service import AccountsService
 from src.shared.database import get_session
 from src.shared.middleware.auth import CurrentUser, require_owner_or_admin
+from src.shared.types import MessageResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -51,7 +53,18 @@ async def me(current_user: CurrentUser, service: Annotated[AccountsService, Depe
         company_name=company.name,
         role=membership.role,
         modules=membership.modules,
+        must_change_password=user.must_change_password,
     )
+
+
+@router.post("/change-password", response_model=MessageResponse)
+async def change_password(
+    current_user: CurrentUser,
+    data: ChangePasswordRequest,
+    service: Annotated[AccountsService, Depends(get_service)],
+):
+    await service.change_password(current_user.user_id, data)
+    return MessageResponse(message="Password updated")
 
 
 @router.get("/companies", response_model=list[CompanyRead])
