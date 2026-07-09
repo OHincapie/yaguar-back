@@ -98,6 +98,14 @@ If the email already exists as a `User` in a *different* company, it reuses that
 and just adds a new `UserCompany` membership rather than erroring — a person can belong
 to more than one company.
 
+`CompanyUserUpdate.password` (added 2026-07-09) lets an owner/admin reset another
+user's password directly through `PUT /auth/users/{id}` — the only account-recovery
+path that exists, since there's no "forgot password" flow either. Because
+`password_hash` lives on the shared `User` row, not per `UserCompany` membership,
+resetting it from one company's Equipo screen changes that person's password
+everywhere, including any other company they belong to — worth knowing if the
+multi-company-membership case ever comes up in a support conversation.
+
 ## Product kits/bundles
 
 A product can be `is_bundle=True`, composed of N units of one or more *base* (non-bundle)
@@ -165,13 +173,25 @@ or reserved for a not-yet-built feature (accounts receivable, Mara the collectio
 agent). Don't assume changing a sale's payment status will move `Customer.saldo`; it
 won't, nothing currently touches it.
 
-## Purchases: cost sync
+## Purchases: cost sync, editing, deletion
 
 Receiving a purchase order (`POST /purchases/{code}/receive`) syncs the product's
 `cost` to the received line's `unit_cost` whenever they differ — a supplier's price
 change becomes the new cost of record. It also drops a row in `pending_agent_triggers`
 for the (not-yet-built) margins agent. Purchases reject any line targeting a bundle
 product at creation time.
+
+`PUT /purchases/{code}` (edit notes/lines, recalculates `total`) and
+`DELETE /purchases/{code}` (added 2026-07-09) are both blocked once a purchase is
+`recibido` — that's the *only* status with a real-world effect (stock added, ledger
+entry written by `receive()`). A `cancelado` purchase never went through `receive()`,
+so editing/deleting it is still allowed — it never touched real data, no different from
+a `borrador` for this purpose. `SaleService.delete_sale` has no such status gate: unlike
+a purchase, a sale's inventory effect happens immediately at creation (`apply_sale`
+inside `create_sale`) regardless of `pagado`/`pendiente`, so there's no "safe,
+not-yet-applied" state to check — deleting a sale always reverses its lines via
+`InventoryService.reverse_sale` (the same helper editing a sale's lines already uses)
+and removes the linked ledger entry.
 
 ## The AI agents (`src/domains/agents/`)
 
