@@ -75,12 +75,21 @@ class SaleService:
         once it has a Sale.id (mirrors how SaleLine is built)."""
         methods_by_id = {m.id: m for m in await self.payment_method_repo.get_by_ids(company_id, [p.payment_method_id for p in payments])}
 
+        # A single payment with no amount means "the whole total". Filled in
+        # by mutating the PaymentLine (not a local copy) on purpose: the
+        # callers build SalePayment rows from these same objects afterward,
+        # so the resolved amount has to land on them.
+        if len(payments) == 1 and payments[0].amount is None:
+            payments[0].amount = total
+
         resolved: list[PaymentMethodConfig] = []
         paid_sum = 0.0
         for p in payments:
             method = methods_by_id.get(p.payment_method_id)
             if not method or not method.is_active:
                 raise BusinessError(f"Unknown or inactive payment method: '{p.payment_method_id}'")
+            if p.amount is None:
+                raise BusinessError("Each payment line needs an explicit amount when the payment is split")
             if p.amount <= 0:
                 raise BusinessError("Each payment line needs a positive amount")
             resolved.append(method)

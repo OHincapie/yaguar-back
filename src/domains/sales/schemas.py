@@ -25,7 +25,14 @@ class SaleLineRead(BaseModel):
 
 class PaymentLine(BaseModel):
     payment_method_id: str
-    amount: float
+    # None means "the whole sale total", and is only valid when this is the
+    # sale's single payment line — the server fills it in from the total it
+    # computed itself. Exists because the total depends on the company's
+    # discount/tax settings, which some callers (notably the chat's LLM)
+    # can't reliably reproduce; with one payment method the amount is
+    # redundant information anyway. Split payments always need explicit
+    # amounts — there's no way to infer how the caller wanted them divided.
+    amount: float | None = None
 
 
 class SaleCreate(BaseModel):
