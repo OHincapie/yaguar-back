@@ -9,7 +9,9 @@ change any of it once you understand the tradeoffs that led here. Written 2026-0
 Yaguar is an ERP for small distributors/wholesalers (inventory, POS, purchases, sales,
 ledger, customers, suppliers), with a differentiating feature: internal AI agents that
 watch the business and propose actions a human must approve before anything executes.
-See `Front/PRODUCT.md` (in the frontend repo, not versioned here) for the product vision.
+See `docs/PRODUCT.md` in the frontend repo (local path `../Front/app/docs/`) for the
+product vision — versioned there since 2026-07-10, along with DESIGN.md, backlog.md,
+and MEJORAS.md (forward-looking improvement options).
 
 This repo is the API. The frontend (Next.js) lives in a sibling repo, `yaguar-front`
 (local path `../Front/app`), deployed separately.
