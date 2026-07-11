@@ -1,6 +1,6 @@
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.domains.agents.detectors import detect_stock_issues
+from src.domains.agents.detectors import detect_margin_issues, detect_stock_issues
 from src.domains.agents.graph import resume_proposal, run_proposal
 from src.domains.agents.models import AgentAlert, AgentConfig
 from src.domains.agents.repository import AgentRepository
@@ -11,6 +11,7 @@ from src.shared.middleware.errors import BusinessError, NotFoundError
 # key here (and their detector module) — sweep()/sweep_all() don't change.
 DETECTORS = {
     "stock": detect_stock_issues,
+    "precios": detect_margin_issues,
 }
 
 

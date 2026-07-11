@@ -105,3 +105,54 @@ async def detect_stock_issues(company_id: str, session: AsyncSession) -> list[di
         )
 
     return candidates
+
+
+# --- Kuri (márgenes) ---------------------------------------------------
+
+LOW_MARGIN_THRESHOLD = 0.15  # below this margin, flag the product
+TARGET_MARGIN = 0.25  # suggest a price that yields this margin
+
+
+def _margin(price: float, cost: float) -> float:
+    """Margin as a fraction of price: (price - cost) / price."""
+    if price <= 0:
+        return 0.0
+    return (price - cost) / price
+
+
+async def detect_margin_issues(company_id: str, session: AsyncSession) -> list[dict[str, Any]]:
+    """Flag products whose margin is negative or below the low-margin
+    threshold, and propose a price adjustment to restore a healthy margin.
+
+    Same shape as detect_stock_issues — pure arithmetic, no LLM. The
+    graph's compose() node turns each candidate into a human-readable
+    alert; the LLM never invents the numbers."""
+    product_repo = ProductRepository(session)
+
+    candidates: list[dict[str, Any]] = []
+    all_products, _ = await product_repo.get_all(company_id, category_id=None, search=None, offset=0, limit=500)
+    for product in all_products:
+        if product.is_bundle:
+            continue  # a kit's cost is derived from components, not stored
+
+        margin = _margin(product.price, product.cost)
+        if margin >= LOW_MARGIN_THRESHOLD:
+            continue  # healthy margin, nothing to flag
+
+        suggested_price = round(product.cost / (1 - TARGET_MARGIN), 2) if product.cost > 0 else product.price
+        candidate_type = "margen_negativo" if margin <= 0 else "margen_bajo"
+        candidates.append(
+            {
+                "type": candidate_type,
+                "product_id": product.id,
+                "sku": product.sku,
+                "name": product.name,
+                "cost": product.cost,
+                "current_price": product.price,
+                "margin_pct": round(margin * 100, 1),
+                "suggested_price": suggested_price,
+                "suggested_margin_pct": round(_margin(suggested_price, product.cost) * 100, 1),
+            }
+        )
+
+    return candidates

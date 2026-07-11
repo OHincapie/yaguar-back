@@ -85,6 +85,24 @@ def build_proposal(candidate: dict[str, Any], draft: AlertDraft) -> dict[str, An
             {"k": "Precio actual", "v": f"${candidate['current_price']:,.2f}"},
             {"k": "Precio sugerido", "v": f"${candidate['suggested_price']:,.2f}"},
         ]
+    elif candidate["type"] in ("margen_negativo", "margen_bajo"):
+        action = {
+            "name": "update_product_price",
+            # product_id is included so sweep_company's de-dup logic
+            # (which keys on args.product_id || args.sku) can suppress a
+            # duplicate proposal while a previous one is still pending.
+            "args": {"sku": candidate["sku"], "product_id": candidate["product_id"], "new_price": candidate["suggested_price"]},
+        }
+        # Price changes are never auto-applied — a human should always
+        # decide to move the price, even if autonomy is set to "auto".
+        auto_amount = None
+        context = [
+            {"k": "Margen actual", "v": f"{candidate['margin_pct']}%"},
+            {"k": "Costo", "v": f"${candidate['cost']:,.2f}"},
+            {"k": "Precio actual", "v": f"${candidate['current_price']:,.2f}"},
+            {"k": "Precio sugerido", "v": f"${candidate['suggested_price']:,.2f}"},
+            {"k": "Margen sugerido", "v": f"{candidate['suggested_margin_pct']}%"},
+        ]
     else:
         raise ValueError(f"Unknown candidate type: {candidate['type']!r}")
 
