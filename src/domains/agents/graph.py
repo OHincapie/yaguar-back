@@ -72,7 +72,14 @@ def build_proposal(candidate: dict[str, Any], draft: AlertDraft) -> dict[str, An
     elif candidate["type"] == "baja_rotacion":
         action = {
             "name": "update_product_price",
-            "args": {"sku": candidate["sku"], "new_price": candidate["suggested_price"]},
+            # product_id included for sweep_company's de-dup (which keys on
+            # args.product_id || args.sku, while candidates carry the UUID).
+            # Without it the sku-only args never matched the candidate's
+            # product_id and every daily sweep re-proposed the same product
+            # — found with 105 duplicate pending alerts when the Inicio
+            # alert rail was connected to real data. The margen branch
+            # below already had this fix; this branch never got it.
+            "args": {"sku": candidate["sku"], "product_id": candidate["product_id"], "new_price": candidate["suggested_price"]},
         }
         # A price change is never auto-applied regardless of the autonomy
         # config — "auto_limit" is defined as a $ ceiling on purchase
