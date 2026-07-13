@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.domains.accounts.repository import AccountsRepository
+from src.domains.customers.repository import CustomerRepository
 from src.domains.inventory.repository import InventoryRepository
 from src.domains.inventory.service import InventoryService
 from src.domains.ledger.repository import LedgerRepository
@@ -12,6 +13,10 @@ from src.domains.products.repository import ProductRepository
 from src.domains.sales.models import SaleStatus
 from src.domains.sales.repository import PaymentMethodRepository, SaleRepository
 from src.domains.sales.schemas import (
+    AbonoCreate,
+    AbonoRead,
+    AbonoResult,
+    CarteraItemRead,
     PaymentMethodCreate,
     PaymentMethodRead,
     PaymentMethodUpdate,
@@ -39,6 +44,7 @@ def get_service(session: Annotated[AsyncSession, Depends(get_session)]) -> SaleS
         LedgerRepository(session),
         AccountsRepository(session),
         PaymentMethodRepository(session),
+        CustomerRepository(session),
     )
 
 
@@ -66,6 +72,13 @@ async def create_sale(current_user: CurrentUser, data: SaleCreate, service: Anno
     return await service.create_sale(current_user.company_id, data)
 
 
+# Declared before /{code} so FastAPI doesn't try to read "cartera" as a
+# sale code.
+@router.get("/cartera", response_model=list[CarteraItemRead])
+async def get_cartera(current_user: CurrentUser, service: Annotated[SaleService, Depends(get_service)]):
+    return await service.get_cartera(current_user.company_id)
+
+
 @router.get("/{code}", response_model=SaleRead)
 async def get_sale(current_user: CurrentUser, code: str, service: Annotated[SaleService, Depends(get_service)]):
     return await service.get_sale(current_user.company_id, code)
@@ -90,6 +103,18 @@ async def delete_sale(current_user: CurrentUser, code: str, service: Annotated[S
 @router.get("/{code}/lines", response_model=list[SaleLineRead])
 async def get_lines(current_user: CurrentUser, code: str, service: Annotated[SaleService, Depends(get_service)]):
     return await service.get_lines(current_user.company_id, code)
+
+
+@router.get("/{code}/abonos", response_model=list[AbonoRead])
+async def list_abonos(current_user: CurrentUser, code: str, service: Annotated[SaleService, Depends(get_service)]):
+    return await service.list_abonos(current_user.company_id, code)
+
+
+@router.post("/{code}/abonos", response_model=AbonoResult, status_code=201, dependencies=[_require_ventas])
+async def register_abono(
+    current_user: CurrentUser, code: str, data: AbonoCreate, service: Annotated[SaleService, Depends(get_service)]
+):
+    return await service.register_abono(current_user.company_id, code, data)
 
 
 @router.get("/{code}/payments", response_model=list[SalePaymentRead])

@@ -42,6 +42,9 @@ class SaleCreate(BaseModel):
     payments: list[PaymentLine]
     notes: str | None = None
     lines: list[SaleLineCreate] = []
+    # Only meaningful for credit sales; ignored otherwise. When omitted on a
+    # credit sale, the server fills it in as date + Company.credit_days.
+    due_date: datetime | None = None
     # No `status` field on purpose — SaleService.create_sale derives it from
     # the payment methods used (any credit method → pendiente, otherwise
     # pagado) the same way regardless of caller (POS checkout, manual
@@ -82,8 +85,56 @@ class SaleRead(BaseModel):
     payment_method: str
     status: SaleStatus
     notes: str | None
+    due_date: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class AbonoCreate(BaseModel):
+    # Must be a real (non-credit) active payment method — you can't pay off
+    # credit with more credit.
+    payment_method_id: str
+    amount: float
+    notes: str | None = None
+
+
+class AbonoRead(BaseModel):
+    id: int
+    sale_id: str
+    payment_method_id: str
+    payment_method_name: str
+    amount: float
+    date: datetime
+    notes: str | None
+
+
+class AbonoResult(BaseModel):
+    """What POST /sales/{code}/abonos returns — the abono plus where the
+    sale stands afterwards, so the UI can update without a second fetch."""
+
+    abono: AbonoRead
+    sale_status: SaleStatus
+    total: float
+    abonado: float
+    saldo: float
+
+
+class CarteraItemRead(BaseModel):
+    """One open credit sale in the receivables view. `overdue` is computed
+    at read time from due_date — nothing persists a 'vencido' status, so
+    the view is always correct without depending on the daily cron."""
+
+    sale_id: str
+    code: str
+    customer_id: str | None
+    customer_name: str
+    date: datetime
+    due_date: datetime | None
+    total: float
+    abonado: float
+    saldo: float
+    overdue: bool
+    days_overdue: int
 
 
 class SalePaymentRead(BaseModel):

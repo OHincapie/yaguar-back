@@ -1,10 +1,17 @@
+from datetime import datetime, timedelta, timezone
+
 from src.domains.accounts.repository import AccountsRepository
+from src.domains.customers.repository import CustomerRepository
 from src.domains.inventory.service import InventoryService
 from src.domains.ledger.models import LedgerCategory, LedgerEntry, LedgerType
 from src.domains.ledger.repository import LedgerRepository
-from src.domains.sales.models import PaymentMethodConfig, Sale, SaleLine, SalePayment, SaleStatus
+from src.domains.sales.models import PaymentMethodConfig, Sale, SaleAbono, SaleLine, SalePayment, SaleStatus
 from src.domains.sales.repository import PaymentMethodRepository, SaleRepository
 from src.domains.sales.schemas import (
+    AbonoCreate,
+    AbonoRead,
+    AbonoResult,
+    CarteraItemRead,
     PaymentLine,
     PaymentMethodCreate,
     PaymentMethodUpdate,
@@ -15,6 +22,11 @@ from src.domains.sales.schemas import (
 )
 from src.shared.middleware.errors import BusinessError, ConflictError, NotFoundError
 
+# Statuses that mean "this credit sale is still waiting to be collected".
+# VENCIDO is never set automatically (overdue is computed at read time from
+# due_date) but the manual status endpoint can set it, so treat it as open.
+OPEN_STATUSES = (SaleStatus.PENDIENTE, SaleStatus.VENCIDO)
+
 
 class SaleService:
     def __init__(
@@ -24,12 +36,29 @@ class SaleService:
         ledger_repo: LedgerRepository,
         accounts_repo: AccountsRepository,
         payment_method_repo: PaymentMethodRepository,
+        customer_repo: CustomerRepository,
     ):
         self.repo = repo
         self.inventory_service = inventory_service
         self.ledger_repo = ledger_repo
         self.accounts_repo = accounts_repo
         self.payment_method_repo = payment_method_repo
+        self.customer_repo = customer_repo
+
+    async def _adjust_saldo(self, company_id: str, customer_id: str | None, delta: float) -> None:
+        """Keeps Customer.saldo (outstanding receivable) in sync. No-op for
+        walk-in sales and near-zero deltas. Clamps at 0 from below so a
+        legacy/seeded saldo that never matched real sales can't go negative."""
+        if customer_id is None or abs(delta) < 0.005:
+            return
+        customer = await self.customer_repo.get_by_id(company_id, customer_id)
+        if customer is None:
+            return
+        customer.saldo = round(max(0.0, customer.saldo + delta), 2)
+        await self.customer_repo.update(customer)
+
+    async def _abonado(self, sale_id: str) -> float:
+        return round(sum(a.amount for a in await self.repo.get_abonos(sale_id)), 2)
 
     async def list_sales(self, company_id: str, status, customer_id: str | None, from_date, to_date, page: int, page_size: int):
         offset = (page - 1) * page_size
@@ -124,6 +153,17 @@ class SaleService:
         subtotal, discount_amount, tax_amount, total = await self._compute_amounts(company_id, data.lines)
         _methods, payment_display, status = await self._resolve_payments(company_id, data.payments, total, data.customer_id)
 
+        # A credit sale gets a collection deadline: explicit from the caller,
+        # or the company's default term. Cash/card/transfer sales carry none.
+        due_date = None
+        if status == SaleStatus.PENDIENTE:
+            if data.due_date is not None:
+                due_date = data.due_date
+            else:
+                company = await self.accounts_repo.get_company(company_id)
+                assert company is not None
+                due_date = datetime.now(timezone.utc) + timedelta(days=company.credit_days)
+
         sale = Sale(
             company_id=company_id,
             code=code,
@@ -135,6 +175,7 @@ class SaleService:
             payment_method=payment_display,
             status=status,
             notes=data.notes,
+            due_date=due_date,
         )
 
         for line_data in data.lines:
@@ -160,15 +201,122 @@ class SaleService:
                 reference_type="sale",
             )
         )
+
+        # Income is recognized in the ledger at creation regardless of
+        # credit (flat-book behavior, unchanged); the receivable side lives
+        # on Customer.saldo until abonos cover it.
+        if sale.status == SaleStatus.PENDIENTE:
+            await self._adjust_saldo(company_id, sale.customer_id, +total)
         return sale
+
+    async def register_abono(self, company_id: str, code: str, data: AbonoCreate) -> AbonoResult:
+        sale = await self.get_sale(company_id, code)
+        if sale.status not in OPEN_STATUSES:
+            raise BusinessError(f"Sale {code} isn't pending collection (status: {sale.status})")
+
+        method = await self.payment_method_repo.get_by_id(company_id, data.payment_method_id)
+        if not method or not method.is_active:
+            raise BusinessError(f"Unknown or inactive payment method: '{data.payment_method_id}'")
+        if method.is_credit:
+            raise BusinessError("An abono needs a real payment method — credit can't pay off credit")
+        if data.amount <= 0:
+            raise BusinessError("An abono needs a positive amount")
+
+        abonado = await self._abonado(sale.id)
+        saldo = round(sale.total - abonado, 2)
+        if data.amount > saldo + 0.01:
+            raise BusinessError(f"Abono ({data.amount:.2f}) exceeds the outstanding balance ({saldo:.2f})")
+
+        abono = await self.repo.add_abono(
+            SaleAbono(sale_id=sale.id, payment_method_id=method.id, amount=data.amount, notes=data.notes)
+        )
+        await self._adjust_saldo(company_id, sale.customer_id, -data.amount)
+
+        abonado = round(abonado + data.amount, 2)
+        saldo = round(sale.total - abonado, 2)
+        if saldo <= 0.01:
+            sale.status = SaleStatus.PAGADO
+            saldo = 0.0
+            sale = await self.repo.update(sale)
+
+        return AbonoResult(
+            abono=AbonoRead(
+                id=abono.id,
+                sale_id=abono.sale_id,
+                payment_method_id=method.id,
+                payment_method_name=method.name,
+                amount=abono.amount,
+                date=abono.date,
+                notes=abono.notes,
+            ),
+            sale_status=sale.status,
+            total=sale.total,
+            abonado=abonado,
+            saldo=saldo,
+        )
+
+    async def list_abonos(self, company_id: str, code: str) -> list[AbonoRead]:
+        sale = await self.get_sale(company_id, code)
+        abonos = await self.repo.get_abonos(sale.id)
+        methods = {m.id: m for m in await self.payment_method_repo.get_all(company_id)}
+        return [
+            AbonoRead(
+                id=a.id,
+                sale_id=a.sale_id,
+                payment_method_id=a.payment_method_id,
+                payment_method_name=methods[a.payment_method_id].name if a.payment_method_id in methods else "—",
+                amount=a.amount,
+                date=a.date,
+                notes=a.notes,
+            )
+            for a in abonos
+        ]
+
+    async def get_cartera(self, company_id: str) -> list[CarteraItemRead]:
+        sales = await self.repo.get_open_credit_sales(company_id)
+        abonos_by_sale = await self.repo.get_abonos_sum_by_sale([s.id for s in sales])
+        # limit high enough to cover every customer — the repo's default 50
+        # would silently drop names on bigger companies.
+        customers = {c.id: c for c in (await self.customer_repo.get_all(company_id, limit=100_000))[0]} if sales else {}
+        now = datetime.now(timezone.utc)
+
+        items: list[CarteraItemRead] = []
+        for s in sales:
+            abonado = round(abonos_by_sale.get(s.id, 0.0), 2)
+            overdue = s.due_date is not None and s.due_date < now
+            customer = customers.get(s.customer_id) if s.customer_id else None
+            items.append(
+                CarteraItemRead(
+                    sale_id=s.id,
+                    code=s.code,
+                    customer_id=s.customer_id,
+                    customer_name=customer.name if customer else "Cliente ocasional",
+                    date=s.date,
+                    due_date=s.due_date,
+                    total=s.total,
+                    abonado=abonado,
+                    saldo=round(s.total - abonado, 2),
+                    overdue=overdue,
+                    days_overdue=max(0, (now - s.due_date).days) if overdue else 0,
+                )
+            )
+        return items
 
     async def update_status(self, company_id: str, code: str, data: SaleStatusUpdate) -> Sale:
         sale = await self.get_sale(company_id, code)
+        # Manual status flips must keep the customer's receivable in sync —
+        # marking an open credit sale "pagado" by hand settles its remaining
+        # balance, reopening a paid one puts the uncovered part back.
+        was_open, now_open = sale.status in OPEN_STATUSES, data.status in OPEN_STATUSES
+        if was_open != now_open:
+            remaining = round(sale.total - await self._abonado(sale.id), 2)
+            await self._adjust_saldo(company_id, sale.customer_id, -remaining if was_open else +remaining)
         sale.status = data.status
         return await self.repo.update(sale)
 
     async def update_sale(self, company_id: str, code: str, data: SaleUpdate) -> Sale:
         sale = await self.get_sale(company_id, code)
+        old_total, old_status = sale.total, sale.status
 
         if data.notes is not None:
             sale.notes = data.notes
@@ -199,6 +347,11 @@ class SaleService:
                 await self.ledger_repo.update(ledger_entry)
 
         if data.payments is not None:
+            # Re-arranging how a sale was paid after abonos were registered
+            # against it would leave saldo/abonado in a state nobody can
+            # reason about — settle or delete the abonos story first.
+            if await self.repo.get_abonos(sale.id):
+                raise BusinessError("This sale already has abonos registered — its payment lines can't be replaced")
             _methods, payment_display, status = await self._resolve_payments(
                 company_id, data.payments, sale.total, sale.customer_id
             )
@@ -208,7 +361,25 @@ class SaleService:
             ]
             await self.repo.replace_payments(sale.id, payments)
             sale.payment_method = payment_display
+            # A credit sale that just became one needs a deadline; one that
+            # stopped being credit sheds it.
+            if status == SaleStatus.PENDIENTE and old_status not in OPEN_STATUSES:
+                company = await self.accounts_repo.get_company(company_id)
+                assert company is not None
+                sale.due_date = datetime.now(timezone.utc) + timedelta(days=company.credit_days)
+            elif status == SaleStatus.PAGADO:
+                sale.due_date = None
             sale.status = status
+
+        # One receivable adjustment covering both edits: the delta between
+        # what this sale contributed to Customer.saldo before (old open →
+        # old total minus abonos, else 0) and after. Line edits on an open
+        # sale move saldo by the total change; credit→paid removes it; paid
+        # →credit adds it.
+        abonado = await self._abonado(sale.id)
+        before = round(old_total - abonado, 2) if old_status in OPEN_STATUSES else 0.0
+        after = round(sale.total - abonado, 2) if sale.status in OPEN_STATUSES else 0.0
+        await self._adjust_saldo(company_id, sale.customer_id, after - before)
 
         return await self.repo.update(sale)
 
@@ -225,6 +396,12 @@ class SaleService:
         if ledger_entry:
             await self.ledger_repo.delete(ledger_entry)
 
+        # An open credit sale stops being owed when it stops existing.
+        if sale.status in OPEN_STATUSES:
+            remaining = round(sale.total - await self._abonado(sale.id), 2)
+            await self._adjust_saldo(company_id, sale.customer_id, -remaining)
+
+        await self.repo.delete_abonos(sale.id)
         await self.repo.replace_lines(sale.id, [])
         await self.repo.replace_payments(sale.id, [])
         await self.repo.delete(sale)

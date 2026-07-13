@@ -94,3 +94,24 @@ class SalePayment(SQLModel, table=True):
     sale_id: str = Field(foreign_key="sales.id", max_length=36)
     payment_method_id: str = Field(foreign_key="payment_methods.id", max_length=36)
     amount: float
+
+
+class SaleAbono(SQLModel, table=True):
+    """A partial payment (abono) against a credit sale, registered after
+    the fact — deliberately a separate table from sale_payments, whose rows
+    describe how the sale was *arranged* at creation time and must sum
+    exactly to Sale.total. Abonos accumulate over time; the sale flips to
+    "pagado" when their sum covers the total (SaleService.register_abono).
+    Customer.saldo is kept in sync incrementally: +total when a credit sale
+    is created, -amount on each abono, and adjusted on edits/deletes."""
+
+    __tablename__ = "sale_abonos"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    sale_id: str = Field(foreign_key="sales.id", max_length=36, index=True)
+    # Which real method the customer paid with (cash, transfer...) — a
+    # credit method can't pay off credit, enforced in the service.
+    payment_method_id: str = Field(foreign_key="payment_methods.id", max_length=36)
+    amount: float
+    date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_type=DateTime(timezone=True))
+    notes: Optional[str] = Field(default=None, max_length=300)

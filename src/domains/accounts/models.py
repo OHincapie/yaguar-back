@@ -45,6 +45,10 @@ class Company(SQLModel, table=True):
     discount_pct: float = Field(default=5.0)
     tax_enabled: bool = Field(default=True)
     tax_pct: float = Field(default=18.0)
+    # Default payment term for credit sales — a credit sale's due_date is
+    # its creation date + this many days unless the caller passes an
+    # explicit due_date (SaleService.create_sale).
+    credit_days: int = Field(default=30)
 
 
 class User(SQLModel, table=True):

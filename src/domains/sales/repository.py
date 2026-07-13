@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.domains.sales.models import PaymentMethodConfig, Sale, SaleLine, SalePayment, SaleStatus
+from src.domains.sales.models import PaymentMethodConfig, Sale, SaleAbono, SaleLine, SalePayment, SaleStatus
 
 
 class SaleRepository:
@@ -99,6 +99,44 @@ class SaleRepository:
         for payment in payments:
             await self.session.refresh(payment)
         return payments
+
+    async def get_abonos(self, sale_id: str) -> list[SaleAbono]:
+        result = await self.session.exec(  # type: ignore
+            select(SaleAbono).where(SaleAbono.sale_id == sale_id).order_by(SaleAbono.date)
+        )
+        return result.all()
+
+    async def add_abono(self, abono: SaleAbono) -> SaleAbono:
+        self.session.add(abono)
+        await self.session.commit()
+        await self.session.refresh(abono)
+        return abono
+
+    async def delete_abonos(self, sale_id: str) -> None:
+        for abono in await self.get_abonos(sale_id):
+            await self.session.delete(abono)
+        await self.session.commit()
+
+    async def get_open_credit_sales(self, company_id: str) -> list[Sale]:
+        """Every sale still waiting to be collected. Only credit sales can
+        be PENDIENTE/VENCIDO (SaleService derives status from the payment
+        methods), so no join against payments is needed."""
+        result = await self.session.exec(  # type: ignore
+            select(Sale)
+            .where(Sale.company_id == company_id, Sale.status.in_([SaleStatus.PENDIENTE, SaleStatus.VENCIDO]))
+            .order_by(Sale.due_date)
+        )
+        return result.all()
+
+    async def get_abonos_sum_by_sale(self, sale_ids: list[str]) -> dict[str, float]:
+        if not sale_ids:
+            return {}
+        result = await self.session.exec(  # type: ignore
+            select(SaleAbono.sale_id, func.coalesce(func.sum(SaleAbono.amount), 0.0))
+            .where(SaleAbono.sale_id.in_(sale_ids))
+            .group_by(SaleAbono.sale_id)
+        )
+        return {sale_id: float(total) for sale_id, total in result.all()}
 
     async def delete(self, sale: Sale) -> None:
         await self.session.delete(sale)
