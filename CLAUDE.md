@@ -188,6 +188,33 @@ or reserved for a not-yet-built feature (accounts receivable, Mara the collectio
 agent). Don't assume changing a sale's payment status will move `Customer.saldo`; it
 won't, nothing currently touches it.
 
+## Cartera / accounts receivable (added 2026-07-13)
+
+Credit sales are finally tracked to collection. `sale_abonos` holds partial
+payments registered after the fact — deliberately separate from
+`sale_payments`, whose rows describe how the sale was *arranged* at creation
+and must sum exactly to `Sale.total`; abonos accumulate until they cover it
+(`SaleService.register_abono` flips the sale to `pagado` then).
+`POST /sales/{code}/abonos` validates: open sale (pendiente/vencido), a real
+non-credit active method, positive amount, can't exceed the outstanding
+balance. `GET /sales/cartera` returns every open credit sale with customer
+name, due date, abonado, saldo, and `overdue` computed **at read time** from
+`due_date` — nothing persists a "vencido" status, so the view doesn't depend
+on the daily cron. (Route declared before `/{code}` so "cartera" isn't
+parsed as a sale code.)
+
+`Company.credit_days` (default 30) sets a credit sale's `due_date` at
+creation (`SaleCreate.due_date` overrides). `Customer.saldo` is now real and
+kept in sync incrementally: +total on credit sale creation, -amount per
+abono, and a before/after-contribution delta on line edits, payment
+replacement, manual status flips, and deletion (clamped at 0 so legacy seed
+values can't go negative — `_adjust_saldo`). Replacing payment lines on a
+sale that already has abonos is rejected outright. The ledger still
+recognizes income at sale creation (flat-book behavior, unchanged) — the
+receivable side lives on `Customer.saldo`, abonos write no ledger entries.
+Migration `0011_cartera` also backfilled `due_date` on open sales and
+recomputed every `customers.saldo` from real open sales.
+
 ## Purchases: cost sync, editing, deletion
 
 Receiving a purchase order (`POST /purchases/{code}/receive`) syncs the product's
