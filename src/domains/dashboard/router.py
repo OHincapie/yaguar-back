@@ -8,7 +8,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.domains.accounts.repository import AccountsRepository
 from src.domains.customers.models import Customer
-from src.domains.dashboard.schemas import CashflowMonth, DashboardCharts, KpiPanel, TopProduct
+from src.domains.dashboard.schemas import CashflowMonth, DashboardCharts, KpiPanel, OutflowSegment, TopProduct
+from src.domains.expenses.repository import ExpenseAccountRepository
 from src.domains.inventory.models import InventoryLevel
 from src.domains.ledger.models import LedgerEntry, LedgerType
 from src.domains.products.models import Product
@@ -192,17 +193,55 @@ async def get_charts(
         else:
             bucket["out"] += float(debit_sum)
 
+    # Outflow breakdown per month: group OUT debit by expense account (each
+    # with its own color) and lump account-less OUT entries (purchases) into
+    # "Compras". Feeds the stacked egresos bars.
+    breakdown_rows = (
+        await session.exec(  # type: ignore
+            select(
+                month_col,
+                LedgerEntry.account_id,
+                func.coalesce(func.sum(LedgerEntry.debit), 0.0),
+            )
+            .where(
+                LedgerEntry.company_id == company_id,
+                LedgerEntry.date >= first_bucket,
+                LedgerEntry.type == LedgerType.OUT,
+            )
+            .group_by(month_col, LedgerEntry.account_id)
+        )
+    ).all()
+    accounts_by_id = {a.id: a for a in await ExpenseAccountRepository(session).get_all(company_id)}
+    COMPRAS_COLOR = "#64748B"  # slate — the non-account (purchases) segment
+    # {month_key: {segment_label: {"amount": x, "color": y}}}
+    seg_by_month: dict[str, dict[str, dict]] = {}
+    for month_dt, account_id, debit_sum in breakdown_rows:
+        amount = float(debit_sum)
+        if amount <= 0:
+            continue
+        account = accounts_by_id.get(account_id) if account_id else None
+        label = account.name if account else "Compras"
+        color = account.color if account else COMPRAS_COLOR
+        seg = seg_by_month.setdefault(month_dt.strftime("%Y-%m"), {})
+        entry = seg.setdefault(label, {"amount": 0.0, "color": color})
+        entry["amount"] += amount
+
     cashflow: list[CashflowMonth] = []
     cursor = first_bucket
     for _ in range(6):
         key = cursor.strftime("%Y-%m")
         bucket = by_month.get(key, {"in": 0.0, "out": 0.0})
+        segments = [
+            OutflowSegment(label=lbl, color=v["color"], amount=round(v["amount"], 2))
+            for lbl, v in sorted(seg_by_month.get(key, {}).items(), key=lambda kv: kv[1]["amount"], reverse=True)
+        ]
         cashflow.append(
             CashflowMonth(
                 month=key,
                 label=MONTH_LABELS[cursor.month - 1],
                 inflow=round(bucket["in"], 2),
                 outflow=round(bucket["out"], 2),
+                outflow_breakdown=segments,
             )
         )
         cursor = (cursor + timedelta(days=32)).replace(day=1)

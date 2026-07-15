@@ -26,11 +26,20 @@ class KpiPanel(BaseModel):
     margin_basis: str
 
 
+class OutflowSegment(BaseModel):
+    label: str
+    color: str
+    amount: float
+
+
 class CashflowMonth(BaseModel):
     month: str  # "2026-02", for keys/sorting
     label: str  # "feb", for the axis
     inflow: float
     outflow: float
+    # Breakdown of `outflow` by expense account (and "Compras" for
+    # purchases), for stacked bars — segments sum to `outflow`.
+    outflow_breakdown: list[OutflowSegment]
 
 
 class TopProduct(BaseModel):
