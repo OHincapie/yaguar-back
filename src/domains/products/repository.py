@@ -91,6 +91,12 @@ class ProductRepository:
         await self.session.refresh(category)
         return category
 
+    async def update_category(self, category: Category) -> Category:
+        self.session.add(category)
+        await self.session.commit()
+        await self.session.refresh(category)
+        return category
+
     async def get_components(self, company_id: str, bundle_product_id: str) -> list[ProductComponent]:
         result = await self.session.exec(  # type: ignore
             select(ProductComponent).where(

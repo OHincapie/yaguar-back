@@ -2,6 +2,7 @@ from src.domains.products.models import Category, Product
 from src.domains.products.repository import ProductRepository
 from src.domains.products.schemas import (
     CategoryCreate,
+    CategoryUpdate,
     ProductComponentItem,
     ProductComponentRead,
     ProductCreate,
@@ -82,6 +83,26 @@ class ProductService:
         color = data.color or self._pick_category_color(existing)
         category = Category(company_id=company_id, code=code, name=name, color=color)
         return await self.repo.create_category(category)
+
+    async def update_category(self, company_id: str, id: str, data: CategoryUpdate) -> Category:
+        category = await self.repo.get_category(company_id, id)
+        if not category:
+            raise NotFoundError("Category", id)
+
+        if data.name is not None:
+            name = data.name.strip()
+            if not name:
+                raise BusinessError("La categoría necesita un nombre")
+            existing = await self.repo.get_all_categories(company_id)
+            # Case-insensitive name uniqueness, excluding this category itself.
+            if any(c.id != id and c.name.strip().lower() == name.lower() for c in existing):
+                raise ConflictError(f"Ya existe una categoría '{name}'")
+            category.name = name
+
+        if data.color is not None:
+            category.color = data.color
+
+        return await self.repo.update_category(category)
 
     @staticmethod
     def _derive_category_code(name: str, existing: list[Category]) -> str:

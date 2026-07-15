@@ -20,6 +20,13 @@ class CategoryRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CategoryUpdate(BaseModel):
+    # Both optional — a caller can rename, recolor, or both. The code isn't
+    # editable (it's an internal handle other things may reference).
+    name: str | None = None
+    color: str | None = None
+
+
 class ProductComponentItem(BaseModel):
     component_product_id: str
     qty: float

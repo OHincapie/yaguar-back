@@ -6,6 +6,7 @@ from src.domains.products.repository import ProductRepository
 from src.domains.products.schemas import (
     CategoryCreate,
     CategoryRead,
+    CategoryUpdate,
     ProductComponentRead,
     ProductCreate,
     ProductRead,
@@ -97,3 +98,10 @@ async def list_categories(current_user: CurrentUser, service: Annotated[ProductS
 @categories_router.post("", response_model=CategoryRead, status_code=201, dependencies=[_require_inventario])
 async def create_category(current_user: CurrentUser, data: CategoryCreate, service: Annotated[ProductService, Depends(get_product_service)]):
     return await service.create_category(current_user.company_id, data)
+
+
+@categories_router.put("/{id}", response_model=CategoryRead, dependencies=[_require_inventario])
+async def update_category(
+    current_user: CurrentUser, id: str, data: CategoryUpdate, service: Annotated[ProductService, Depends(get_product_service)]
+):
+    return await service.update_category(current_user.company_id, id, data)
