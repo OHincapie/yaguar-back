@@ -25,6 +25,7 @@ MODULE_KEYS = (
     "inventario",
     "proveedores",
     "clientes",
+    "gastos",
     "libro",
 )
 

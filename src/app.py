@@ -8,6 +8,7 @@ from src.domains.agents.router import router as agents_router
 from src.domains.ai_usage.router import router as ai_usage_router
 from src.domains.customers.router import router as customers_router
 from src.domains.dashboard.router import router as dashboard_router
+from src.domains.expenses.router import router as expenses_router
 from src.domains.inventory.router import router as inventory_router
 from src.domains.ledger.router import router as ledger_router
 from src.domains.pos.router import router as pos_router
@@ -52,6 +53,7 @@ app.include_router(customers_router, prefix=API_PREFIX)
 app.include_router(sales_router, prefix=API_PREFIX)
 app.include_router(payment_methods_router, prefix=API_PREFIX)
 app.include_router(ledger_router, prefix=API_PREFIX)
+app.include_router(expenses_router, prefix=API_PREFIX)
 app.include_router(pos_router, prefix=API_PREFIX)
 app.include_router(dashboard_router, prefix=API_PREFIX)
 app.include_router(agents_router, prefix=API_PREFIX)

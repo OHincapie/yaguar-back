@@ -33,6 +33,23 @@ class LedgerRepository:
         result = await self.session.exec(query.order_by(LedgerEntry.date.desc()).offset(offset).limit(limit))  # type: ignore
         return result.all(), total
 
+    async def get_by_id(self, company_id: str, id: int) -> LedgerEntry | None:
+        result = await self.session.exec(  # type: ignore
+            select(LedgerEntry).where(LedgerEntry.company_id == company_id, LedgerEntry.id == id)
+        )
+        return result.first()
+
+    async def get_expenses(self, company_id: str, offset: int = 0, limit: int = 50) -> tuple[list[LedgerEntry], int]:
+        """Manual operational expenses: ledger entries tagged with an
+        expense account. Excludes auto entries from sales/purchases."""
+        query = select(LedgerEntry).where(
+            LedgerEntry.company_id == company_id, LedgerEntry.account_id.is_not(None)
+        )
+        count_result = await self.session.exec(query)  # type: ignore
+        total = len(count_result.all())
+        result = await self.session.exec(query.order_by(LedgerEntry.date.desc()).offset(offset).limit(limit))  # type: ignore
+        return result.all(), total
+
     async def create(self, entry: LedgerEntry) -> LedgerEntry:
         self.session.add(entry)
         await self.session.commit()

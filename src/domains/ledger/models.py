@@ -32,3 +32,8 @@ class LedgerEntry(SQLModel, table=True):
     type: LedgerType = Field(sa_type=AutoString)
     reference_id: Optional[str] = Field(default=None, max_length=50)
     reference_type: Optional[str] = Field(default=None, max_length=50)
+    # Set only on manual operational expenses (Gastos module) — points at the
+    # company-configurable ExpenseAccount, which carries the display name,
+    # optional PUC code and color. Null for auto entries (sales/purchases)
+    # and for the broad enum categories.
+    account_id: Optional[str] = Field(default=None, foreign_key="expense_accounts.id", max_length=36)
