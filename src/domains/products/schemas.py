@@ -2,9 +2,13 @@ from pydantic import BaseModel
 
 
 class CategoryCreate(BaseModel):
-    code: str
     name: str
-    color: str
+    # Both optional: the service derives a 3-letter code from the name and
+    # picks a palette color when omitted, so callers (the chat, a simple UI
+    # form) only need to supply a name. A UI with a color picker can still
+    # pass an explicit color; passing a code is allowed but rarely useful.
+    code: str | None = None
+    color: str | None = None
 
 
 class CategoryRead(BaseModel):

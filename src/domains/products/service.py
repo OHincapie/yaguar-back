@@ -54,12 +54,59 @@ class ProductService:
     async def list_categories(self, company_id: str) -> list[Category]:
         return await self.repo.get_all_categories(company_id)
 
+    # Distinct, readable defaults for auto-assigned category colors — cycled
+    # through in order, skipping any a company already uses so a new category
+    # doesn't collide visually with an existing one.
+    _CATEGORY_PALETTE = (
+        "#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899", "#EF4444",
+        "#14B8A6", "#F97316", "#6366F1", "#84CC16", "#06B6D4", "#D946EF",
+    )
+
     async def create_category(self, company_id: str, data: CategoryCreate) -> Category:
-        existing = await self.repo.get_category_by_code(company_id, data.code)
-        if existing:
-            raise ConflictError(f"Category '{data.code}' already exists")
-        category = Category(company_id=company_id, **data.model_dump())
+        existing = await self.repo.get_all_categories(company_id)
+
+        name = data.name.strip()
+        if not name:
+            raise BusinessError("La categoría necesita un nombre")
+
+        # A name that already exists (case-insensitive) is a duplicate — the
+        # code is an implementation detail the caller usually doesn't set, so
+        # dedupe on the human-facing name, not the code.
+        if any(c.name.strip().lower() == name.lower() for c in existing):
+            raise ConflictError(f"Ya existe una categoría '{name}'")
+
+        code = (data.code or self._derive_category_code(name, existing)).upper()
+        if any(c.code == code for c in existing):
+            raise ConflictError(f"El código de categoría '{code}' ya está en uso")
+
+        color = data.color or self._pick_category_color(existing)
+        category = Category(company_id=company_id, code=code, name=name, color=color)
         return await self.repo.create_category(category)
+
+    @staticmethod
+    def _derive_category_code(name: str, existing: list[Category]) -> str:
+        """A short uppercase code from the name — first 3 letters, then a
+        numeric suffix if that's taken (TEC, TEC2, ...). Falls back to 'CAT'
+        for a name with fewer than 3 usable letters."""
+        letters = "".join(ch for ch in name.upper() if ch.isalpha())
+        base = letters[:3] or "CAT"
+        taken = {c.code for c in existing}
+        if base not in taken:
+            return base
+        for n in range(2, 100):
+            candidate = f"{base}{n}"
+            if candidate not in taken:
+                return candidate
+        return base  # 98 collisions on one prefix — let the uniqueness check surface it
+
+    @classmethod
+    def _pick_category_color(cls, existing: list[Category]) -> str:
+        used = {c.color.upper() for c in existing}
+        for color in cls._CATEGORY_PALETTE:
+            if color.upper() not in used:
+                return color
+        # More categories than palette entries — reuse by count, keeps it deterministic.
+        return cls._CATEGORY_PALETTE[len(existing) % len(cls._CATEGORY_PALETTE)]
 
     async def get_components(self, company_id: str, sku: str) -> list[ProductComponentRead]:
         product = await self.get_product(company_id, sku)
