@@ -106,6 +106,8 @@ class AccountsService:
         company = await self.repo.get_company(company_id)
         if not company:
             raise NotFoundError("Company", company_id)
+        if "margin_basis" in data and data["margin_basis"] not in ("price", "cost"):
+            raise BusinessError("margin_basis debe ser 'price' o 'cost'")
         for field, value in data.items():
             setattr(company, field, value)
         return await self.repo.update_company(company)

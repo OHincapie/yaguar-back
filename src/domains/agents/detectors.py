@@ -12,11 +12,13 @@ from typing import Any
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from src.domains.accounts.repository import AccountsRepository
 from src.domains.inventory.models import MovementType
 from src.domains.inventory.repository import InventoryRepository
 from src.domains.inventory.service import InventoryService
 from src.domains.products.repository import ProductRepository
 from src.domains.suppliers.repository import SupplierRepository
+from src.shared.margin import LOW_MARGIN_THRESHOLD, TARGET_MARGIN, margin_pct, normalize_basis, price_for_target_margin
 
 STOCKOUT_LOOKBACK_DAYS = 14
 SLOW_MOVING_DAYS = 30
@@ -109,25 +111,24 @@ async def detect_stock_issues(company_id: str, session: AsyncSession) -> list[di
 
 # --- Kuri (márgenes) ---------------------------------------------------
 
-LOW_MARGIN_THRESHOLD = 0.15  # below this margin, flag the product
-TARGET_MARGIN = 0.25  # suggest a price that yields this margin
-
-
-def _margin(price: float, cost: float) -> float:
-    """Margin as a fraction of price: (price - cost) / price."""
-    if price <= 0:
-        return 0.0
-    return (price - cost) / price
-
 
 async def detect_margin_issues(company_id: str, session: AsyncSession) -> list[dict[str, Any]]:
     """Flag products whose margin is negative or below the low-margin
     threshold, and propose a price adjustment to restore a healthy margin.
 
+    Margin is computed in the company's configured basis (price vs cost —
+    see src/shared/margin.py) so the numbers in the alert match what the
+    user sees in Inventario/Dashboard, and the threshold/target follow the
+    same basis.
+
     Same shape as detect_stock_issues — pure arithmetic, no LLM. The
     graph's compose() node turns each candidate into a human-readable
     alert; the LLM never invents the numbers."""
     product_repo = ProductRepository(session)
+    company = await AccountsRepository(session).get_company(company_id)
+    basis = normalize_basis(company.margin_basis if company else None)
+    low = LOW_MARGIN_THRESHOLD[basis]
+    target = TARGET_MARGIN[basis]
 
     candidates: list[dict[str, Any]] = []
     all_products, _ = await product_repo.get_all(company_id, category_id=None, search=None, offset=0, limit=500)
@@ -135,11 +136,11 @@ async def detect_margin_issues(company_id: str, session: AsyncSession) -> list[d
         if product.is_bundle:
             continue  # a kit's cost is derived from components, not stored
 
-        margin = _margin(product.price, product.cost)
-        if margin >= LOW_MARGIN_THRESHOLD:
+        margin = margin_pct(product.price, product.cost, basis) / 100  # fraction
+        if margin >= low:
             continue  # healthy margin, nothing to flag
 
-        suggested_price = round(product.cost / (1 - TARGET_MARGIN), 2) if product.cost > 0 else product.price
+        suggested_price = price_for_target_margin(product.cost, target, basis) if product.cost > 0 else product.price
         candidate_type = "margen_negativo" if margin <= 0 else "margen_bajo"
         candidates.append(
             {
@@ -151,7 +152,7 @@ async def detect_margin_issues(company_id: str, session: AsyncSession) -> list[d
                 "current_price": product.price,
                 "margin_pct": round(margin * 100, 1),
                 "suggested_price": suggested_price,
-                "suggested_margin_pct": round(_margin(suggested_price, product.cost) * 100, 1),
+                "suggested_margin_pct": round(margin_pct(suggested_price, product.cost, basis), 1),
             }
         )
 

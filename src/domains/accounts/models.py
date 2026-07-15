@@ -49,6 +49,10 @@ class Company(SQLModel, table=True):
     # its creation date + this many days unless the caller passes an
     # explicit due_date (SaleService.create_sale).
     credit_days: int = Field(default=30)
+    # How margin percentages are shown across the whole app: "price"
+    # (gross margin over sale price) or "cost" (markup over cost). Default
+    # "price" preserves prior behavior. See src/shared/margin.py.
+    margin_basis: str = Field(default="price", sa_type=AutoString)
 
 
 class User(SQLModel, table=True):

@@ -6,6 +6,7 @@ from sqlalchemy import func
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from src.domains.accounts.repository import AccountsRepository
 from src.domains.customers.models import Customer
 from src.domains.dashboard.schemas import CashflowMonth, DashboardCharts, KpiPanel, TopProduct
 from src.domains.inventory.models import InventoryLevel
@@ -15,6 +16,7 @@ from src.domains.purchases.models import Purchase, PurchaseStatus
 from src.domains.sales.models import Sale, SaleAbono, SaleLine, SaleStatus
 from src.domains.suppliers.models import Supplier
 from src.shared.database import get_session
+from src.shared.margin import MarginBasis, margin_pct, normalize_basis
 from src.shared.middleware.auth import CurrentUser
 
 MONTH_LABELS = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic")
@@ -92,14 +94,21 @@ async def get_kpis(
     )
     open_purchases_total = round(float(open_po_result.one()), 2)
 
+    # Margins follow the company's configured basis (price vs cost) so the
+    # dashboard matches Inventario and Kuri.
+    company = await AccountsRepository(session).get_company(company_id)
+    basis = normalize_basis(company.margin_basis if company else None)
+
     # Realized margin over the last 30 days of actual sale lines — what was
     # really earned, unlike avg_margin_pct below which is a catalog-wide
-    # average whether products sell or not.
+    # average whether products sell or not. Numerator is gross profit; the
+    # denominator is revenue (price basis) or cost (cost basis).
     margin_result = (
         await session.exec(  # type: ignore
             select(
                 func.coalesce(func.sum((SaleLine.unit_price - SaleLine.unit_cost) * SaleLine.qty), 0.0),
                 func.coalesce(func.sum(SaleLine.unit_price * SaleLine.qty), 0.0),
+                func.coalesce(func.sum(SaleLine.unit_cost * SaleLine.qty), 0.0),
             )
             .join(Sale, Sale.id == SaleLine.sale_id)  # type: ignore
             .where(
@@ -109,7 +118,9 @@ async def get_kpis(
             )
         )
     ).one()
-    margin_30d_pct = round(float(margin_result[0]) / float(margin_result[1]) * 100, 1) if float(margin_result[1]) > 0 else None
+    profit_30d = float(margin_result[0])
+    denom_30d = float(margin_result[2]) if basis == MarginBasis.COST else float(margin_result[1])
+    margin_30d_pct = round(profit_30d / denom_30d * 100, 1) if denom_30d > 0 else None
 
     critical_result = await session.exec(  # type: ignore
         select(func.count()).where(
@@ -121,11 +132,9 @@ async def get_kpis(
 
     products_result = await session.exec(select(Product).where(Product.company_id == company_id))  # type: ignore
     products = products_result.all()
-    if products:
-        margins = [(p.price - p.cost) / p.price * 100 for p in products if p.price > 0]
-        avg_margin = sum(margins) / len(margins) if margins else 0.0
-    else:
-        avg_margin = 0.0
+    denom_ok = (lambda p: p.cost > 0) if basis == MarginBasis.COST else (lambda p: p.price > 0)
+    margins = [margin_pct(p.price, p.cost, basis) for p in products if denom_ok(p)]
+    avg_margin = sum(margins) / len(margins) if margins else 0.0
 
     return KpiPanel(
         sales_today=sales_today,
@@ -138,6 +147,7 @@ async def get_kpis(
         critical_stock_count=critical_stock_count,
         avg_margin_pct=round(avg_margin, 1),
         margin_30d_pct=margin_30d_pct,
+        margin_basis=basis.value,
     )
 
 

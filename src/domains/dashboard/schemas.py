@@ -21,6 +21,9 @@ class KpiPanel(BaseModel):
     # None when there were no sales in the window (the UI falls back
     # to the catalog average).
     margin_30d_pct: float | None
+    # Which basis the two margin numbers above are in ("price" | "cost"),
+    # so the UI can label them and never shows a mismatched figure.
+    margin_basis: str
 
 
 class CashflowMonth(BaseModel):

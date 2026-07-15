@@ -60,6 +60,7 @@ class CompanySettingsRead(BaseModel):
     tax_enabled: bool
     tax_pct: float
     credit_days: int
+    margin_basis: str
 
     model_config = {"from_attributes": True}
 
@@ -70,6 +71,7 @@ class CompanySettingsUpdate(BaseModel):
     tax_enabled: bool | None = None
     tax_pct: float | None = None
     credit_days: int | None = None
+    margin_basis: str | None = None
 
 
 class CompanyUserRead(BaseModel):
