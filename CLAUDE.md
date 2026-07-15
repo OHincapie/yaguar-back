@@ -158,7 +158,15 @@ Payment methods are a company-scoped table (`payment_methods`), not a hardcoded 
 every company gets 4 defaults seeded (Efectivo/Tarjeta/Transferencia/Crédito, matching
 the old enum's values) on registration (`AccountsService.register`), and can add more
 (e.g. "Nequi") via `POST /payment-methods` (owner/admin only, mirrors
-`require_owner_or_admin`). `PaymentMethodConfig.is_credit` marks which ones mean "not
+`require_owner_or_admin`). A **fully-free sale** (every line priced at 0, so total is 0 — e.g. a POS
+gift) is allowed: `_resolve_payments` relaxes the "each amount must be
+positive" rule to accept the single 0 amount when `total` rounds to 0, and
+forces the sale to `pagado` (a free sale owes nothing, so credit rules
+don't apply). Normal sales still require positive amounts. Stock is
+deducted by qty in `apply_sale` regardless of price, so a $0 line still
+comes off inventory — the POS exposes this via an editable per-line price.
+
+`PaymentMethodConfig.is_credit` marks which ones mean "not
 paid yet" rather than real money changing hands.
 
 A sale can be paid across several methods at once — `SaleCreate.payments` is a

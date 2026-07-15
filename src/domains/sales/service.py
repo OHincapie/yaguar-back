@@ -104,6 +104,13 @@ class SaleService:
         once it has a Sale.id (mirrors how SaleLine is built)."""
         methods_by_id = {m.id: m for m in await self.payment_method_repo.get_by_ids(company_id, [p.payment_method_id for p in payments])}
 
+        # A fully-free sale (every line given away / priced at 0) has a total
+        # of 0 — no money changes hands, so it's paid on the spot and the
+        # per-line "amount must be positive" rule below is relaxed to allow
+        # the single 0 amount. Stock is still deducted normally; this is just
+        # the payment side. Anything above ~a cent is a normal sale.
+        is_free = abs(total) < 0.01
+
         # A single payment with no amount means "the whole total". Filled in
         # by mutating the PaymentLine (not a local copy) on purpose: the
         # callers build SalePayment rows from these same objects afterward,
@@ -119,7 +126,7 @@ class SaleService:
                 raise BusinessError(f"Unknown or inactive payment method: '{p.payment_method_id}'")
             if p.amount is None:
                 raise BusinessError("Each payment line needs an explicit amount when the payment is split")
-            if p.amount <= 0:
+            if p.amount < 0 or (p.amount == 0 and not is_free):
                 raise BusinessError("Each payment line needs a positive amount")
             resolved.append(method)
             paid_sum += p.amount
@@ -128,8 +135,10 @@ class SaleService:
         if abs(paid_sum - total) > 0.01:
             raise BusinessError(f"Payments must add up to the total ({total:.2f}), got {paid_sum:.2f}")
 
+        # A free sale is always settled — nothing to owe, so credit rules
+        # don't apply (a "free credit" line would create a bogus receivable).
         credit_methods = [m for m in resolved if m.is_credit]
-        if credit_methods:
+        if credit_methods and not is_free:
             # Deliberately all-or-nothing — not a partial-payment/accounts
             # receivable feature. Splitting real money across several
             # methods is fine; mixing real money with "owed" isn't
@@ -140,7 +149,7 @@ class SaleService:
             if customer_id is None:
                 raise BusinessError("A walk-in sale (no customer) can't be paid on credit")
 
-        status = SaleStatus.PENDIENTE if credit_methods else SaleStatus.PAGADO
+        status = SaleStatus.PAGADO if is_free else (SaleStatus.PENDIENTE if credit_methods else SaleStatus.PAGADO)
         # dict.fromkeys instead of set(): de-dupes repeated methods while
         # keeping the order the user entered them in.
         display = " + ".join(dict.fromkeys(m.name for m in resolved))
