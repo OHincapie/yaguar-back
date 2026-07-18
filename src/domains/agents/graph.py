@@ -60,12 +60,35 @@ def build_proposal(candidate: dict[str, Any], draft: AlertDraft) -> dict[str, An
                 "product_id": candidate["product_id"],
                 "qty": candidate["suggested_qty"],
                 "unit_cost": candidate["unit_cost"],
+                "notes": "Generada automáticamente por Inti (agente de inventario)",
             },
         }
         auto_amount = candidate["total_cost"]
         context = [
             {"k": "Stock actual", "v": f"{candidate['stock_qty']:g} und"},
             {"k": "Punto mínimo", "v": f"{candidate['min_stock']:g} und"},
+            {"k": "Sugerido", "v": f"{candidate['suggested_qty']:g} und"},
+            {"k": "Costo OC", "v": f"${candidate['total_cost']:,.2f}"},
+        ]
+    elif candidate["type"] == "reorden_predictivo":
+        action = {
+            "name": "create_purchase",
+            # product_id for sweep de-dup (keys on args.product_id); Yaco and
+            # Inti have distinct agent_keys so a product could in theory get
+            # one from each, but the detector's "above minimum" guard keeps
+            # their candidate sets disjoint.
+            "args": {
+                "supplier_id": candidate["supplier_id"],
+                "product_id": candidate["product_id"],
+                "qty": candidate["suggested_qty"],
+                "unit_cost": candidate["unit_cost"],
+                "notes": "Generada automáticamente por Yaco (agente de compras)",
+            },
+        }
+        auto_amount = candidate["total_cost"]
+        context = [
+            {"k": "Venta diaria", "v": f"{candidate['daily_rate']:g} und"},
+            {"k": "Cobertura", "v": f"{candidate['days_of_cover']:g} días"},
             {"k": "Sugerido", "v": f"{candidate['suggested_qty']:g} und"},
             {"k": "Costo OC", "v": f"${candidate['total_cost']:,.2f}"},
         ]
@@ -109,6 +132,41 @@ def build_proposal(candidate: dict[str, Any], draft: AlertDraft) -> dict[str, An
             {"k": "Precio actual", "v": f"${candidate['current_price']:,.2f}"},
             {"k": "Precio sugerido", "v": f"${candidate['suggested_price']:,.2f}"},
             {"k": "Margen sugerido", "v": f"{candidate['suggested_margin_pct']}%"},
+        ]
+    elif candidate["type"] == "cobro_vencido":
+        action = {
+            "name": "mark_sale_overdue",
+            # dedup_key (the sale id) so sweep_company suppresses a duplicate
+            # while a proposal for this sale is still pending.
+            "args": {"sale_code": candidate["sale_code"], "dedup_key": candidate["dedup_key"]},
+        }
+        # Never auto-applied — chasing a payment is a human decision.
+        auto_amount = None
+        context = [
+            {"k": "Cliente", "v": candidate["customer_name"]},
+            {"k": "Vencido hace", "v": f"{candidate['days_overdue']} días"},
+            {"k": "Saldo", "v": f"${candidate['saldo']:,.2f}"},
+            {"k": "Total", "v": f"${candidate['total']:,.2f}"},
+        ]
+    elif candidate["type"] == "categoria_incorrecta":
+        action = {
+            "name": "update_product_category",
+            # product_id rides along for sweep_company's de-dup (keys on
+            # args.product_id || args.sku), same as the price branches.
+            "args": {
+                "sku": candidate["sku"],
+                "product_id": candidate["product_id"],
+                "new_category_id": candidate["new_category_id"],
+            },
+        }
+        # Data-structure changes are never auto-applied — a human confirms
+        # every recategorization, even with autonomy set to "auto".
+        auto_amount = None
+        context = [
+            {"k": "Categoría actual", "v": candidate["current_category"]},
+            {"k": "Sugerida", "v": candidate["suggested_category"]},
+            {"k": "Confianza", "v": f"{candidate['confidence']}%"},
+            {"k": "Motivo", "v": candidate["reason"]},
         ]
     else:
         raise ValueError(f"Unknown candidate type: {candidate['type']!r}")

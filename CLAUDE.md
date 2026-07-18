@@ -36,7 +36,8 @@ router.py      FastAPI routes, thin — delegates to service
 
 Domains: `accounts` (companies/users/auth/settings), `products` (+ categories + kits),
 `inventory`, `suppliers`, `customers`, `sales`, `purchases`, `ledger`, `pos` (checkout),
-`dashboard` (KPIs), `agents` (the AI agents — see below).
+`dashboard` (KPIs), `agents` (the AI agents — see below), `ai_usage` (token/usage log),
+`chat` (copilot conversation persistence — see below).
 
 `src/app.py` wires all routers under `/api`. `src/shared/` has cross-cutting stuff:
 `database.py` (engine + session), `settings.py` (env config), `middleware/auth.py`
@@ -245,17 +246,28 @@ and removes the linked ledger entry.
 
 ## The AI agents (`src/domains/agents/`)
 
-Four planned agents — Yaco (compras), Mara (cobranzas), Inti (inventario), Kuri
-(márgenes) — that watch the business and propose actions a human approves. **Only Inti
-has a real detector right now**; the other three exist as config rows (roster entries
-in the frontend) with nothing behind them.
+Five agents watch the business and propose actions a human approves: Yaco
+(compras, predictive reorder), Mara (cobros, overdue credit), Inti (stock,
+quiebre/baja rotación), Kuri (precios, márgenes) and Khipu (catalogo, data
+audit — added 2026-07-17). All five have real detectors wired in
+`AgentService.DETECTORS`.
 
 **Engine**: LangGraph, checkpointed to the same Neon Postgres via `AsyncPostgresSaver`
 (needs `psycopg[binary]`, not plain `psycopg` — Vercel's Python runtime has no system
 `libpq`, discovered the hard way).
 
-- `detectors.py` — pure Python, no LLM. Computes facts deterministically (stock below
-  minimum, no sales in 30 days, suggested reorder qty/price). Trusted arithmetic.
+- `detectors.py` — pure Python, no LLM, with ONE deliberate exception. Computes
+  facts deterministically (stock below minimum, no sales in 30 days, suggested
+  reorder qty/price). Trusted arithmetic. **The exception is Khipu**
+  (`detect_catalog_issues`): "a cellphone filed under Audífonos" is a language
+  judgment, not arithmetic, so its detector asks an LLM to *suspect*
+  misassignments from the real category list + catalog, then validates every
+  suspicion in Python before it becomes a candidate — real SKU, suggested
+  category must exist verbatim in the company's list (the LLM can never invent
+  one), confidence ≥ 70, cap of 20 findings/sweep. Its action
+  (`update_product_category`) is never auto-applied; a human confirms every
+  recategorization. Verified live in prod on day one: it caught a real
+  "COLLAGEN" product filed under "Bebé" and proposed "Naturistas" (95%).
 - `graph.py` — the shared graph every agent runs. **Read this before adding a new
   agent's node logic**: `compose` (LLM turns facts into title/body via structured
   output) → `persist` (writes the `AgentAlert` row, decides auto-apply vs. ask) →
@@ -294,6 +306,31 @@ not-yet-built margins agent).
 Adding a new agent = a detector function + a system prompt entry in
 `prompts.AGENT_SYSTEM_PROMPTS` + a case in `graph.build_proposal()`/`actions.py`. The
 graph structure itself (`_build_graph`) shouldn't need to change.
+
+## Chat persistence + audit (`src/domains/chat/`, added 2026-07-16)
+
+Persists the "Inicio" copilot conversations (which used to live only in the browser).
+`chat_conversations` (company + user scoped, title derived from the first user message)
+and `chat_messages` (one row per UIMessage, PK = the client-generated message id, `parts`
+stored verbatim as JSONB — text, tool calls, approvals, and attachments inline as base64).
+The frontend's chat route calls `PUT /chat/conversations/{id}/sync` server-side on every
+finished turn with the full message list; `ChatService.sync_conversation` **upserts by
+message id** (idempotent — re-sending the whole conversation each turn just updates
+existing rows and inserts new ones; a tool continuation updates its assistant row in
+place). Ownership is enforced on the client-supplied conversation id: writing to another
+user's/company's conversation is a `ForbiddenError`, reading one is a 404 (no existence
+leak).
+
+`GET /chat/conversations` + `/{id}` are the user's own history (scoped to the caller).
+**Cross-company audit is a separate, superadmin-only surface**: `User.is_superadmin` (a
+platform-operator flag, deliberately *not* a company role in `UserCompany` — it crosses
+the multi-tenant boundary, so it lives on the shared `User` and is only ever set by hand
+in the DB, never via any endpoint). `AuthContext.is_superadmin` is looked up fresh per
+request (same as role/modules, so revoking takes effect immediately), gated by
+`require_superadmin`. The `chat_audit_router` (`/chat/audit/conversations[/{id}]`) is the
+only thing behind it — no in-app screen yet, queried directly by the operator. Everything
+here was verified live in prod (persist a real turn → own history → audit 403 for a
+normal user, 200 with company/user/message_count once superadmin) before shipping.
 
 ## Known gotchas (things that broke before, worth not re-breaking)
 

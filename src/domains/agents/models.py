@@ -7,8 +7,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import AutoString, Column, Field, SQLModel, UniqueConstraint
 
 # Keys match src/lib/data.ts's AgentKey on the frontend: compras (Yaco),
-# cobros (Mara), stock (Inti), precios (Kuri).
-AGENT_KEYS = ("compras", "cobros", "stock", "precios")
+# cobros (Mara), stock (Inti), precios (Kuri), catalogo (Khipu).
+AGENT_KEYS = ("compras", "cobros", "stock", "precios", "catalogo")
 
 
 class AgentConfig(SQLModel, table=True):

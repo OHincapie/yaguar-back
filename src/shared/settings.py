@@ -7,7 +7,13 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://localhost/yaguar"
     jwt_secret: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 60 * 24  # 24h
+    # 30 days — this is a phone-first app for shopkeepers; a 24h token meant
+    # the session died every morning and taps "did nothing" (David's report,
+    # 2026-07-17). Safe enough here: the cookie is httpOnly, and role/module
+    # revocation doesn't depend on token expiry (membership is re-checked
+    # from the DB on every request — see middleware/auth.py). Keep in sync
+    # with TOKEN_MAX_AGE_SECONDS in the frontend's session.ts.
+    jwt_expire_minutes: int = 60 * 24 * 30
     debug: bool = False
 
     # Comma-separated list of exact allowed origins, plus a regex for Vercel

@@ -50,6 +50,19 @@ class PurchaseRepository:
         result = await self.session.exec(select(PurchaseLine).where(PurchaseLine.purchase_id == purchase_id))  # type: ignore
         return result.all()
 
+    async def products_with_open_orders(self, company_id: str) -> set[str]:
+        """Product ids sitting on a purchase order that hasn't landed yet
+        (borrador/en camino/aduana). Yaco uses this to avoid re-proposing a
+        reorder for something already on its way — a received or cancelled
+        order no longer counts."""
+        open_statuses = (PurchaseStatus.BORRADOR, PurchaseStatus.EN_CAMINO, PurchaseStatus.ADUANA)
+        result = await self.session.exec(  # type: ignore
+            select(PurchaseLine.product_id)
+            .join(Purchase, PurchaseLine.purchase_id == Purchase.id)
+            .where(Purchase.company_id == company_id, Purchase.status.in_(open_statuses))
+        )
+        return set(result.all())
+
     async def create(self, purchase: Purchase, lines: list[PurchaseLine]) -> Purchase:
         self.session.add(purchase)
         for line in lines:

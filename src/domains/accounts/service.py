@@ -110,6 +110,8 @@ class AccountsService:
             raise NotFoundError("Company", company_id)
         if "margin_basis" in data and data["margin_basis"] not in ("price", "cost"):
             raise BusinessError("margin_basis debe ser 'price' o 'cost'")
+        if "business_context" in data and data["business_context"] and len(data["business_context"]) > 1500:
+            raise BusinessError("El contexto del negocio no puede superar 1500 caracteres")
         for field, value in data.items():
             setattr(company, field, value)
         return await self.repo.update_company(company)

@@ -1,7 +1,8 @@
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import select
+from sqlmodel import delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from src.domains.inventory.models import InventoryLevel, InventoryMovement
 from src.domains.products.models import Category, Product, ProductComponent
 from src.shared.middleware.errors import ConflictError
 
@@ -62,12 +63,24 @@ class ProductRepository:
 
     async def delete(self, product: Product) -> None:
         sku = product.sku  # read before rollback expires the instance's attributes
+        # A product's own inventory (level + movement history) and its own
+        # component list go with it — having stock is not a reason to keep a
+        # product someone wants gone; the confirm modal warns about it. Sale/
+        # purchase lines (and being a component of *another* kit) still block
+        # via their FKs — deleting those would falsify real business history.
+        await self.session.exec(delete(InventoryLevel).where(InventoryLevel.product_id == product.id))  # type: ignore
+        await self.session.exec(delete(InventoryMovement).where(InventoryMovement.product_id == product.id))  # type: ignore
+        await self.session.exec(  # type: ignore
+            delete(ProductComponent).where(ProductComponent.bundle_product_id == product.id)
+        )
         await self.session.delete(product)
         try:
             await self.session.commit()
         except IntegrityError as exc:
             await self.session.rollback()
-            raise ConflictError(f"Can't delete '{sku}' — it has inventory, purchase, or sale records tied to it") from exc
+            raise ConflictError(
+                f"No se puede eliminar '{sku}' — tiene ventas, compras o kits asociados"
+            ) from exc
 
     async def get_all_categories(self, company_id: str) -> list[Category]:
         result = await self.session.exec(select(Category).where(Category.company_id == company_id))  # type: ignore

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.domains.accounts.repository import AccountsRepository
+from src.domains.agents.repository import AgentRepository
 from src.domains.customers.repository import CustomerRepository
 from src.domains.inventory.repository import InventoryRepository
 from src.domains.inventory.service import InventoryService
@@ -27,6 +28,7 @@ def get_sale_service(session: Annotated[AsyncSession, Depends(get_session)]) -> 
         AccountsRepository(session),
         PaymentMethodRepository(session),
         CustomerRepository(session),
+        AgentRepository(session),
     )
 
 

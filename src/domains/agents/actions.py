@@ -7,6 +7,7 @@ from typing import Any, Awaitable, Callable
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from src.domains.agents.repository import AgentRepository
 from src.domains.ledger.repository import LedgerRepository
 from src.domains.inventory.repository import InventoryRepository
 from src.domains.products.repository import ProductRepository
@@ -27,12 +28,16 @@ async def _create_purchase(company_id: str, args: dict[str, Any], session: Async
         InventoryService(InventoryRepository(session), product_repo),
         LedgerRepository(session),
         product_repo,
+        AgentRepository(session),
     )
     purchase = await purchase_service.create_purchase(
         company_id,
         PurchaseCreate(
             supplier_id=args["supplier_id"],
-            notes="Generada automáticamente por Inti (agente de inventario)",
+            # Which agent proposed it (Inti reactive / Yaco predictive) travels
+            # in args so the PO note is attributed correctly; older in-flight
+            # proposals without it fall back to the generic wording.
+            notes=args.get("notes", "Generada automáticamente por un agente de Yaguar"),
             lines=[PurchaseLineCreate(product_id=args["product_id"], qty=args["qty"], unit_cost=args["unit_cost"])],
         ),
     )
@@ -47,9 +52,37 @@ async def _update_product_price(company_id: str, args: dict[str, Any], session: 
     return {"product_id": product.id, "sku": product.sku, "new_price": product.price}
 
 
+async def _mark_sale_overdue(company_id: str, args: dict[str, Any], session: AsyncSession) -> dict[str, Any]:
+    # Mara's action: escalate an overdue credit sale pendiente → vencido.
+    # Both are "open" statuses, so Customer.saldo is unaffected (no _adjust
+    # needed) — a plain repo update is enough, no full SaleService.
+    from src.domains.sales.models import SaleStatus
+    from src.domains.sales.repository import SaleRepository
+
+    repo = SaleRepository(session)
+    sale = await repo.get_by_code(company_id, args["sale_code"])
+    if not sale:
+        raise ValueError(f"Sale not found: {args['sale_code']!r}")
+    sale.status = SaleStatus.VENCIDO
+    sale = await repo.update(sale)
+    return {"sale_code": sale.code, "status": sale.status}
+
+
+async def _update_product_category(company_id: str, args: dict[str, Any], session: AsyncSession) -> dict[str, Any]:
+    # Khipu's action: move a miscategorized product to the suggested
+    # category. Same service path as a manual edit in Inventario.
+    product_service = ProductService(ProductRepository(session))
+    product = await product_service.update_product(
+        company_id, args["sku"], ProductUpdate(category_id=args["new_category_id"])
+    )
+    return {"product_id": product.id, "sku": product.sku, "new_category_id": product.category_id}
+
+
 ACTION_HANDLERS: dict[str, ActionHandler] = {
     "create_purchase": _create_purchase,
     "update_product_price": _update_product_price,
+    "mark_sale_overdue": _mark_sale_overdue,
+    "update_product_category": _update_product_category,
 }
 
 

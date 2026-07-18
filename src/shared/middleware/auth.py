@@ -27,6 +27,9 @@ class AuthContext:
     # JWT's user_id/company_id claims do. Costs one extra query per request.
     role: str = "member"
     modules: list[str] = field(default_factory=list)
+    # Platform superadmin (operator of Yaguar), not a company role — gates
+    # the cross-company chat audit endpoints. See User.is_superadmin.
+    is_superadmin: bool = False
 
     def has_module(self, module: str) -> bool:
         return self.role in OWNER_ROLES or module in self.modules
@@ -62,7 +65,7 @@ async def get_current_user(
     # Import here, not at module load, to avoid a circular import with
     # src.domains.accounts.service (which imports create_access_token from
     # this module).
-    from src.domains.accounts.models import UserCompany
+    from src.domains.accounts.models import User, UserCompany
 
     result = await session.exec(  # type: ignore
         select(UserCompany).where(UserCompany.user_id == user_id, UserCompany.company_id == company_id)
@@ -71,11 +74,17 @@ async def get_current_user(
     if not membership:
         raise UnauthorizedError("No longer a member of this company")
 
+    # Fetched fresh alongside the membership (same reasoning as role/modules)
+    # so revoking superadmin takes effect immediately, not on next login.
+    user_result = await session.exec(select(User).where(User.id == user_id))  # type: ignore
+    user = user_result.first()
+
     return AuthContext(
         user_id=user_id,
         company_id=company_id,
         role=membership.role.value if hasattr(membership.role, "value") else str(membership.role),
         modules=membership.modules,
+        is_superadmin=bool(user and user.is_superadmin),
     )
 
 
@@ -99,3 +108,10 @@ async def require_owner_or_admin(current_user: CurrentUser) -> None:
     business module — only owner/admin, regardless of any module grant."""
     if current_user.role not in OWNER_ROLES:
         raise ForbiddenError("Only an owner or admin can do this")
+
+
+async def require_superadmin(current_user: CurrentUser) -> None:
+    """Platform-operator-only actions that cross the company boundary (the
+    chat audit endpoints). Not a company role — see User.is_superadmin."""
+    if not current_user.is_superadmin:
+        raise ForbiddenError("Superadmin only")

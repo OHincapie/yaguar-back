@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.domains.accounts.router import router as auth_router
 from src.domains.agents.router import router as agents_router
 from src.domains.ai_usage.router import router as ai_usage_router
+from src.domains.chat.router import audit_router as chat_audit_router, router as chat_router
 from src.domains.customers.router import router as customers_router
 from src.domains.dashboard.router import router as dashboard_router
 from src.domains.expenses.router import router as expenses_router
@@ -58,3 +59,5 @@ app.include_router(pos_router, prefix=API_PREFIX)
 app.include_router(dashboard_router, prefix=API_PREFIX)
 app.include_router(agents_router, prefix=API_PREFIX)
 app.include_router(ai_usage_router, prefix=API_PREFIX)
+app.include_router(chat_router, prefix=API_PREFIX)
+app.include_router(chat_audit_router, prefix=API_PREFIX)

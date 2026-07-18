@@ -54,6 +54,11 @@ class Company(SQLModel, table=True):
     # (gross margin over sale price) or "cost" (markup over cost). Default
     # "price" preserves prior behavior. See src/shared/margin.py.
     margin_basis: str = Field(default="price", sa_type=AutoString)
+    # Free-text description of the business, written by the owner (Equipo →
+    # "Mi negocio"). Injected as informative context into the chat copilot's
+    # system prompt and the voice-note transcription prompt — capped at
+    # 1500 chars in the service because it travels on every LLM request.
+    business_context: str = Field(default="", sa_type=AutoString)
 
 
 class User(SQLModel, table=True):
@@ -72,6 +77,12 @@ class User(SQLModel, table=True):
     # POST /auth/change-password once the user sets their own. The frontend
     # blocks the whole app behind a "set a new password" screen while true.
     must_change_password: bool = Field(default=False)
+    # Platform-level superadmin (the operator of Yaguar itself), deliberately
+    # separate from the per-company owner/admin role in UserCompany. Grants
+    # cross-company access to the chat audit endpoints — a real crossing of
+    # the multi-tenant boundary, so it lives on the User (not a membership)
+    # and is only ever set by hand in the DB, never through any endpoint.
+    is_superadmin: bool = Field(default=False)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc), sa_type=DateTime(timezone=True)
     )

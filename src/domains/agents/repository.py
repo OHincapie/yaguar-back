@@ -75,6 +75,17 @@ class AgentRepository:
         await self.session.refresh(trigger)
         return trigger
 
+    async def get_company_unprocessed_triggers(self, company_id: str) -> list[PendingAgentTrigger]:
+        """Every unprocessed breadcrumb for one company, any agent — the
+        opportunistic drain reads these on Agentes page load."""
+        result = await self.session.exec(  # type: ignore
+            select(PendingAgentTrigger).where(
+                PendingAgentTrigger.company_id == company_id,
+                PendingAgentTrigger.processed_at.is_(None),  # type: ignore
+            )
+        )
+        return result.all()
+
     async def get_unprocessed_triggers(self, company_id: str, agent_key: str) -> list[PendingAgentTrigger]:
         result = await self.session.exec(  # type: ignore
             select(PendingAgentTrigger).where(

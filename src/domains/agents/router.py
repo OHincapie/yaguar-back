@@ -42,6 +42,10 @@ async def list_alerts(
     service: Annotated[AgentService, Depends(get_service)],
     status: str | None = None,
 ):
+    # Opportunistic drain: react to any business events queued since the last
+    # visit before returning the list, so freshly-triggered proposals show up
+    # on this same load. No-ops cheaply when nothing is queued.
+    await service.drain_triggers(current_user.company_id)
     return await service.list_alerts(current_user.company_id, status)
 
 

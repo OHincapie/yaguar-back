@@ -1,6 +1,12 @@
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.domains.agents.detectors import detect_margin_issues, detect_stock_issues
+from src.domains.agents.detectors import (
+    detect_catalog_issues,
+    detect_collections_issues,
+    detect_margin_issues,
+    detect_reorder_needs,
+    detect_stock_issues,
+)
 from src.domains.agents.graph import resume_proposal, run_proposal
 from src.domains.agents.models import AgentAlert, AgentConfig
 from src.domains.agents.repository import AgentRepository
@@ -10,8 +16,11 @@ from src.shared.middleware.errors import BusinessError, NotFoundError
 # Which detector feeds which agent. Adding Yaco/Mara/Kuri means adding a
 # key here (and their detector module) — sweep()/sweep_all() don't change.
 DETECTORS = {
+    "compras": detect_reorder_needs,
     "stock": detect_stock_issues,
     "precios": detect_margin_issues,
+    "cobros": detect_collections_issues,
+    "catalogo": detect_catalog_issues,
 }
 
 
@@ -49,25 +58,55 @@ class AgentService:
         assert resolved is not None
         return resolved
 
-    async def sweep_company(self, company_id: str) -> int:
-        """Runs every enabled agent's detector for one company and starts a
-        proposal for each new candidate. Returns how many were started."""
+    async def drain_triggers(self, company_id: str) -> int:
+        """Opportunistic, event-driven reaction: since the last drain, some
+        business actions (a sale dropping stock below minimum, a purchase
+        changing a cost) left breadcrumbs in pending_agent_triggers. Run only
+        the agents those breadcrumbs point at, then mark them processed.
+
+        Cheap no-op when the queue is empty (the common case), so it's safe
+        to call on every Agentes page load — unlike the full daily sweep,
+        this doesn't run all four detectors every time."""
+        triggers = await self.repo.get_company_unprocessed_triggers(company_id)
+        if not triggers:
+            return 0
+        agent_keys = {t.agent_key for t in triggers}
+        started = await self.sweep_company(company_id, only_agents=agent_keys)
+        # Mark processed regardless of per-candidate outcome: detectors
+        # re-derive from live DB state and the daily sweep is the backstop,
+        # so a breadcrumb that produced nothing shouldn't be retried on every
+        # page load.
+        await self.repo.mark_triggers_processed(triggers)
+        return started
+
+    async def sweep_company(self, company_id: str, only_agents: set[str] | None = None) -> int:
+        """Runs each enabled agent's detector for one company and starts a
+        proposal for each new candidate. Returns how many were started.
+        `only_agents` limits the run to a subset (used by drain_triggers);
+        None runs them all (the daily sweep)."""
         configs = {c.agent_key: c for c in await self.repo.get_configs(company_id)}
         pending = await self.repo.list_alerts(company_id, status="pending")
+        # De-dup key per pending alert. Product agents key on product_id/sku;
+        # Mara (and any non-product agent) sets an explicit dedup_key (the
+        # entity id), so the key generalizes beyond products.
+        def _dedup_key(args: dict) -> str | None:
+            return args.get("dedup_key") or args.get("product_id") or args.get("sku")
+
         already_proposed = {
-            f"{a.agent_key}:{a.proposed_action.get('args', {}).get('product_id') or a.proposed_action.get('args', {}).get('sku')}"
-            for a in pending
+            f"{a.agent_key}:{_dedup_key(a.proposed_action.get('args', {}))}" for a in pending
         }
 
         started = 0
         errors: list[str] = []
         for agent_key, detect in DETECTORS.items():
+            if only_agents is not None and agent_key not in only_agents:
+                continue
             config = configs.get(agent_key)
             if config and not config.enabled:
                 continue
             candidates = await detect(company_id, self.session)
             for candidate in candidates:
-                key = f"{agent_key}:{candidate['product_id']}"
+                key = f"{agent_key}:{candidate.get('dedup_key') or candidate.get('product_id')}"
                 if key in already_proposed:
                     continue
                 try:

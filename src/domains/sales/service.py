@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta, timezone
 
 from src.domains.accounts.repository import AccountsRepository
+from src.domains.agents.models import PendingAgentTrigger
+from src.domains.agents.repository import AgentRepository
 from src.domains.customers.repository import CustomerRepository
 from src.domains.inventory.service import InventoryService
 from src.domains.ledger.models import LedgerCategory, LedgerEntry, LedgerType
@@ -37,6 +39,7 @@ class SaleService:
         accounts_repo: AccountsRepository,
         payment_method_repo: PaymentMethodRepository,
         customer_repo: CustomerRepository,
+        agent_repo: AgentRepository,
     ):
         self.repo = repo
         self.inventory_service = inventory_service
@@ -44,6 +47,7 @@ class SaleService:
         self.accounts_repo = accounts_repo
         self.payment_method_repo = payment_method_repo
         self.customer_repo = customer_repo
+        self.agent_repo = agent_repo
 
     async def _adjust_saldo(self, company_id: str, customer_id: str | None, delta: float) -> None:
         """Keeps Customer.saldo (outstanding receivable) in sync. No-op for
@@ -187,13 +191,27 @@ class SaleService:
             due_date=due_date,
         )
 
+        # Products this sale pushed to/below their minimum — leave a
+        # breadcrumb so Inti reacts on the next Agentes page load instead of
+        # waiting for the daily sweep. The LLM work happens later, off the
+        # checkout path (see PendingAgentTrigger).
         for line_data in data.lines:
-            await self.inventory_service.apply_sale(
+            level = await self.inventory_service.apply_sale(
                 company_id=company_id,
                 product_id=line_data.product_id,
                 qty=line_data.qty,
                 sale_id=sale.id,
             )
+            if level is not None and level.min_stock and level.stock_qty <= level.min_stock:
+                # level.product_id is the level that actually dropped — for a
+                # kit that's the depleted component, not the kit itself.
+                await self.agent_repo.create_trigger(
+                    PendingAgentTrigger(
+                        company_id=company_id,
+                        agent_key="stock",
+                        context={"product_id": level.product_id, "reason": "sale_below_min", "sale_code": code},
+                    )
+                )
 
         lines = [SaleLine(sale_id=sale.id, **line.model_dump()) for line in data.lines]
         payments = [SalePayment(sale_id=sale.id, payment_method_id=p.payment_method_id, amount=p.amount) for p in data.payments]
