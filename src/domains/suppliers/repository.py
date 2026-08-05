@@ -20,7 +20,9 @@ class SupplierRepository:
         count_result = await self.session.exec(query)  # type: ignore
         total = len(count_result.all())
 
-        result = await self.session.exec(query.offset(offset).limit(limit))  # type: ignore
+        # Deterministic key so paging past the first page can't repeat or skip
+        # rows — see the same note in the products repository.
+        result = await self.session.exec(query.order_by(Supplier.code).offset(offset).limit(limit))  # type: ignore
         return result.all(), total
 
     async def get_by_id(self, company_id: str, id: str) -> Supplier | None:

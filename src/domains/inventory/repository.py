@@ -28,7 +28,10 @@ class InventoryRepository:
         count_result = await self.session.exec(query)  # type: ignore
         total = len(count_result.all())
 
-        result = await self.session.exec(query.offset(offset).limit(limit))  # type: ignore
+        # Deterministic key: list_levels slices this in Python for paging, and
+        # each page is a separate request that re-runs this query — an unordered
+        # result could hand the caller a different slice each time.
+        result = await self.session.exec(query.order_by(InventoryLevel.product_id).offset(offset).limit(limit))  # type: ignore
         return result.all(), total
 
     async def upsert_level(

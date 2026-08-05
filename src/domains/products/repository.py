@@ -28,7 +28,10 @@ class ProductRepository:
         count_result = await self.session.exec(query)  # type: ignore
         total = len(count_result.all())
 
-        result = await self.session.exec(query.offset(offset).limit(limit))  # type: ignore
+        # Explicit sort: OFFSET/LIMIT without an ORDER BY lets Postgres return
+        # rows in any order it likes, so page 2 can repeat or skip rows from
+        # page 1. sku is unique per company, so it's a fully deterministic key.
+        result = await self.session.exec(query.order_by(Product.sku).offset(offset).limit(limit))  # type: ignore
         return result.all(), total
 
     async def get_by_sku(self, company_id: str, sku: str) -> Product | None:
@@ -45,7 +48,9 @@ class ProductRepository:
 
     async def get_bundles(self, company_id: str) -> list[Product]:
         result = await self.session.exec(  # type: ignore
-            select(Product).where(Product.company_id == company_id, Product.is_bundle == True)  # noqa: E712
+            select(Product)
+            .where(Product.company_id == company_id, Product.is_bundle == True)  # noqa: E712
+            .order_by(Product.sku)
         )
         return result.all()
 

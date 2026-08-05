@@ -30,7 +30,8 @@ class LedgerRepository:
         count_result = await self.session.exec(query)  # type: ignore
         total = len(count_result.all())
 
-        result = await self.session.exec(query.order_by(LedgerEntry.date.desc()).offset(offset).limit(limit))  # type: ignore
+        # id breaks date ties — see the same note in the sales repository.
+        result = await self.session.exec(query.order_by(LedgerEntry.date.desc(), LedgerEntry.id).offset(offset).limit(limit))  # type: ignore
         return result.all(), total
 
     async def get_by_id(self, company_id: str, id: int) -> LedgerEntry | None:
@@ -47,7 +48,7 @@ class LedgerRepository:
         )
         count_result = await self.session.exec(query)  # type: ignore
         total = len(count_result.all())
-        result = await self.session.exec(query.order_by(LedgerEntry.date.desc()).offset(offset).limit(limit))  # type: ignore
+        result = await self.session.exec(query.order_by(LedgerEntry.date.desc(), LedgerEntry.id).offset(offset).limit(limit))  # type: ignore
         return result.all(), total
 
     async def create(self, entry: LedgerEntry) -> LedgerEntry:

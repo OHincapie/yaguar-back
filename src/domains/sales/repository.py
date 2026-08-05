@@ -33,7 +33,10 @@ class SaleRepository:
         count_result = await self.session.exec(query)  # type: ignore
         total = len(count_result.all())
 
-        result = await self.session.exec(query.order_by(Sale.date.desc()).offset(offset).limit(limit))  # type: ignore
+        # id breaks date ties: several sales share a date routinely, and without
+        # a tiebreaker their relative order is free to change between the
+        # requests that fetch page 1 and page 2.
+        result = await self.session.exec(query.order_by(Sale.date.desc(), Sale.id).offset(offset).limit(limit))  # type: ignore
         return result.all(), total
 
     async def get_by_id(self, company_id: str, id: str) -> Sale | None:

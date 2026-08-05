@@ -25,7 +25,8 @@ class PurchaseRepository:
         count_result = await self.session.exec(query)  # type: ignore
         total = len(count_result.all())
 
-        result = await self.session.exec(query.order_by(Purchase.date.desc()).offset(offset).limit(limit))  # type: ignore
+        # id breaks date ties — see the same note in the sales repository.
+        result = await self.session.exec(query.order_by(Purchase.date.desc(), Purchase.id).offset(offset).limit(limit))  # type: ignore
         return result.all(), total
 
     async def get_by_id(self, company_id: str, id: str) -> Purchase | None:
