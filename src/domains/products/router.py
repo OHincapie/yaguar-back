@@ -7,6 +7,8 @@ from src.domains.products.schemas import (
     CategoryCreate,
     CategoryRead,
     CategoryUpdate,
+    DeleteCategoryResult,
+    DeleteProductResult,
     ProductComponentRead,
     ProductCreate,
     ProductRead,
@@ -16,7 +18,7 @@ from src.domains.products.schemas import (
 from src.domains.products.service import ProductService
 from src.shared.database import get_session
 from src.shared.middleware.auth import CurrentUser, require_module
-from src.shared.types import MessageResponse, PaginatedResponse
+from src.shared.types import PaginatedResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -39,9 +41,15 @@ async def list_products(
     search: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    archived: bool = False,
 ):
     products, total = await service.list_products(
-        current_user.company_id, category_id=cat, search=search, page=page, page_size=page_size
+        current_user.company_id,
+        category_id=cat,
+        search=search,
+        page=page,
+        page_size=page_size,
+        archived=archived,
     )
     pages = (total + page_size - 1) // page_size
     return PaginatedResponse(data=products, total=total, page=page, page_size=page_size, pages=pages)
@@ -62,10 +70,24 @@ async def update_product(current_user: CurrentUser, sku: str, data: ProductUpdat
     return await service.update_product(current_user.company_id, sku, data)
 
 
-@router.delete("/{sku}", response_model=MessageResponse, dependencies=[_require_inventario])
+@router.delete("/{sku}", response_model=DeleteProductResult, dependencies=[_require_inventario])
 async def delete_product(current_user: CurrentUser, sku: str, service: Annotated[ProductService, Depends(get_service)]):
-    await service.delete_product(current_user.company_id, sku)
-    return MessageResponse(message=f"Product '{sku}' deleted")
+    # Reports which of the two actually happened — a product with sales or
+    # purchases behind it is archived, not removed, and the UI says so.
+    outcome = await service.delete_product(current_user.company_id, sku)
+    return DeleteProductResult(
+        status=outcome,
+        message=(
+            f"'{sku}' se archivó porque tiene ventas o compras asociadas"
+            if outcome == "archived"
+            else f"'{sku}' se eliminó"
+        ),
+    )
+
+
+@router.post("/{sku}/restore", response_model=ProductRead, dependencies=[_require_inventario])
+async def restore_product(current_user: CurrentUser, sku: str, service: Annotated[ProductService, Depends(get_service)]):
+    return await service.restore_product(current_user.company_id, sku)
 
 
 @router.get("/{sku}/components", response_model=list[ProductComponentRead])
@@ -105,3 +127,24 @@ async def update_category(
     current_user: CurrentUser, id: str, data: CategoryUpdate, service: Annotated[ProductService, Depends(get_product_service)]
 ):
     return await service.update_category(current_user.company_id, id, data)
+
+
+@categories_router.delete("/{id}", response_model=DeleteCategoryResult, dependencies=[_require_inventario])
+async def delete_category(
+    current_user: CurrentUser,
+    id: str,
+    service: Annotated[ProductService, Depends(get_product_service)],
+    # Where to move this category's products. Required whenever it still has
+    # any — the service refuses rather than guessing a destination.
+    reassign_to: str | None = None,
+):
+    moved = await service.delete_category(current_user.company_id, id, reassign_to)
+    return DeleteCategoryResult(
+        reassigned=moved,
+        message=(
+            f"Categoría eliminada, {moved} producto{'s' if moved != 1 else ''} reasignado"
+            f"{'s' if moved != 1 else ''}"
+            if moved
+            else "Categoría eliminada"
+        ),
+    )

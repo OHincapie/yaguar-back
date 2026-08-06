@@ -27,6 +27,20 @@ class CategoryUpdate(BaseModel):
     color: str | None = None
 
 
+class DeleteProductResult(BaseModel):
+    """`status` is "deleted" or "archived" — a product referenced by a sale or
+    purchase is archived instead of removed, and the caller needs to know which
+    happened to phrase the confirmation correctly."""
+
+    status: str
+    message: str
+
+
+class DeleteCategoryResult(BaseModel):
+    reassigned: int
+    message: str
+
+
 class ProductComponentItem(BaseModel):
     component_product_id: str
     qty: float
@@ -44,7 +58,10 @@ class SetComponentsRequest(BaseModel):
 
 
 class ProductCreate(BaseModel):
-    sku: str
+    # Optional: when omitted the service derives one from the name
+    # (MELE001, MELE002, ...), so a shop with no coding scheme of its own
+    # doesn't have to invent one on the most-used form in the app.
+    sku: str | None = None
     name: str
     category_id: str
     price: float
@@ -73,6 +90,7 @@ class ProductRead(BaseModel):
     supplier_id: str | None
     unit: str
     is_bundle: bool
+    is_archived: bool = False
 
     model_config = {"from_attributes": True}
 

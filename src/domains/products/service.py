@@ -16,11 +16,22 @@ class ProductService:
         self.repo = repo
 
     async def list_products(
-        self, company_id: str, category_id: str | None, search: str | None, page: int, page_size: int
+        self,
+        company_id: str,
+        category_id: str | None,
+        search: str | None,
+        page: int,
+        page_size: int,
+        archived: bool = False,
     ):
         offset = (page - 1) * page_size
         return await self.repo.get_all(
-            company_id=company_id, category_id=category_id, search=search, offset=offset, limit=page_size
+            company_id=company_id,
+            category_id=category_id,
+            search=search,
+            offset=offset,
+            limit=page_size,
+            archived=archived,
         )
 
     async def get_product(self, company_id: str, sku: str) -> Product:
@@ -30,12 +41,19 @@ class ProductService:
         return product
 
     async def create_product(self, company_id: str, data: ProductCreate) -> Product:
-        existing = await self.repo.get_by_sku(company_id, data.sku)
-        if existing:
-            raise ConflictError(f"Product with SKU '{data.sku}' already exists")
+        sku = (data.sku or "").strip().upper()
+        if sku:
+            existing = await self.repo.get_by_sku(company_id, sku)
+            if existing:
+                raise ConflictError(f"Product with SKU '{sku}' already exists")
+        else:
+            # SKU is optional: plenty of small shops don't run their own coding
+            # scheme and typing one is friction on the most-used form in the
+            # app. Derived from the name the same way category codes are.
+            sku = await self._derive_product_sku(company_id, data.name)
 
-        payload = data.model_dump(exclude={"components"})
-        product = Product(company_id=company_id, is_bundle=bool(data.components), **payload)
+        payload = data.model_dump(exclude={"components", "sku"})
+        product = Product(company_id=company_id, sku=sku, is_bundle=bool(data.components), **payload)
         product = await self.repo.create(product)
 
         if data.components:
@@ -48,9 +66,24 @@ class ProductService:
             setattr(product, field, value)
         return await self.repo.update(product)
 
-    async def delete_product(self, company_id: str, sku: str) -> None:
+    async def delete_product(self, company_id: str, sku: str) -> str:
+        """Returns "deleted" or "archived" so the caller can tell the user what
+        actually happened. A product referenced by a sale, a purchase or another
+        kit is archived rather than removed — deleting those lines would leave a
+        received purchase showing fewer items than were paid for, and its total
+        no longer matching the ledger entry it wrote."""
         product = await self.get_product(company_id, sku)
+        if await self.repo.has_history(product):
+            await self.repo.set_archived(product, True)
+            return "archived"
         await self.repo.delete(product)
+        return "deleted"
+
+    async def restore_product(self, company_id: str, sku: str) -> Product:
+        product = await self.get_product(company_id, sku)
+        if not product.is_archived:
+            raise BusinessError(f"El producto '{sku}' no está archivado")
+        return await self.repo.set_archived(product, False)
 
     async def list_categories(self, company_id: str) -> list[Category]:
         return await self.repo.get_all_categories(company_id)
@@ -103,6 +136,50 @@ class ProductService:
             category.color = data.color
 
         return await self.repo.update_category(category)
+
+    async def delete_category(self, company_id: str, id: str, reassign_to: str | None = None) -> int:
+        """Deletes a category, moving its products to `reassign_to` first.
+        Returns how many were moved. Refuses without a target when the category
+        still has products — products can't be left pointing at a category that
+        no longer exists (every screen joins on it), and silently picking a
+        destination for someone isn't ours to decide."""
+        category = await self.repo.get_category(company_id, id)
+        if not category:
+            raise NotFoundError("Category", id)
+
+        products = await self.repo.products_in_category(company_id, id)
+        if products:
+            if not reassign_to:
+                raise BusinessError(
+                    f"La categoría '{category.name}' tiene {len(products)} "
+                    f"producto{'s' if len(products) != 1 else ''} — indica a cuál moverlos"
+                )
+            if reassign_to == id:
+                raise BusinessError("La categoría destino no puede ser la que estás eliminando")
+            target = await self.repo.get_category(company_id, reassign_to)
+            if not target:
+                raise NotFoundError("Category", reassign_to)
+            await self.repo.reassign_category(products, target.id)
+
+        await self.repo.delete_category(category)
+        return len(products)
+
+    async def _derive_product_sku(self, company_id: str, name: str) -> str:
+        """An auto SKU from the product name: the first letters uppercased plus
+        a zero-padded counter — "Melena de León" → MELE001, then MELE002 for the
+        next one. Mirrors _derive_category_code's convention, with the counter
+        always present so auto-generated SKUs read consistently rather than
+        having the first of each family look different from its siblings."""
+        letters = "".join(ch for ch in name.upper() if ch.isalpha())
+        base = letters[:4] or "PRD"
+        taken = await self.repo.skus_with_prefix(company_id, base)
+        for n in range(1, 1000):
+            candidate = f"{base}{n:03d}"
+            if candidate not in taken:
+                return candidate
+        raise BusinessError(
+            f"No se pudo generar un SKU automático para '{name}' — escribe uno manualmente"
+        )
 
     @staticmethod
     def _derive_category_code(name: str, existing: list[Category]) -> str:

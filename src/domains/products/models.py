@@ -29,6 +29,12 @@ class Product(SQLModel, table=True):
     supplier_id: Optional[str] = Field(default=None, foreign_key="suppliers.id", max_length=36)
     unit: str = Field(default="und", max_length=20)
     is_bundle: bool = Field(default=False)
+    # Soft delete. A product that already appears in a sale or a purchase can't
+    # be removed without falsifying history (a received purchase moved stock and
+    # wrote a ledger entry), so deleting one archives it instead: it disappears
+    # from listings, search, the POS and the chat's tools, while the documents
+    # that reference it keep rendering its name and amounts.
+    is_archived: bool = Field(default=False)
 
 
 class ProductComponent(SQLModel, table=True):
