@@ -18,7 +18,9 @@ from src.domains.sales.schemas import (
     PaymentMethodCreate,
     PaymentMethodUpdate,
     SaleCreate,
+    SaleItemBrief,
     SaleLineCreate,
+    SaleRead,
     SaleStatusUpdate,
     SaleUpdate,
 )
@@ -66,10 +68,24 @@ class SaleService:
 
     async def list_sales(self, company_id: str, status, customer_id: str | None, from_date, to_date, page: int, page_size: int):
         offset = (page - 1) * page_size
-        return await self.repo.get_all(
+        sales, total = await self.repo.get_all(
             company_id, status=status, customer_id=customer_id, from_date=from_date, to_date=to_date,
             offset=offset, limit=page_size,
         )
+        # Attach each sale's items so the list can show what was sold without a
+        # request per row. One extra query for the whole page.
+        grouped = await self.repo.get_lines_for_sales([s.id for s in sales])
+        enriched = [
+            SaleRead(
+                **{f: getattr(sale, f) for f in SaleRead.model_fields if f != "items"},
+                items=[
+                    SaleItemBrief(qty=qty, name=name, unit_price=unit_price)
+                    for qty, name, unit_price in grouped.get(sale.id, [])
+                ],
+            )
+            for sale in sales
+        ]
+        return enriched, total
 
     async def get_sale(self, company_id: str, code: str) -> Sale:
         sale = await self.repo.get_by_code(company_id, code)

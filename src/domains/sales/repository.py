@@ -3,12 +3,30 @@ from datetime import datetime
 from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from src.domains.products.models import Product
 from src.domains.sales.models import PaymentMethodConfig, Sale, SaleAbono, SaleLine, SalePayment, SaleStatus
 
 
 class SaleRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
+
+    async def get_lines_for_sales(self, sale_ids: list[str]) -> dict[str, list[tuple[float, str, float]]]:
+        """(qty, product name, unit price) per sale, for the whole page in ONE
+        query — this feeds the item summary shown on the Ventas list, and doing
+        it per row would be 200 round-trips on a full page."""
+        if not sale_ids:
+            return {}
+        result = await self.session.exec(  # type: ignore
+            select(SaleLine.sale_id, SaleLine.qty, Product.name, SaleLine.unit_price)
+            .join(Product, Product.id == SaleLine.product_id)  # type: ignore[arg-type]
+            .where(SaleLine.sale_id.in_(sale_ids))  # type: ignore[attr-defined]
+            .order_by(SaleLine.id)  # type: ignore[arg-type]
+        )
+        grouped: dict[str, list[tuple[float, str, float]]] = {}
+        for sale_id, qty, name, unit_price in result.all():
+            grouped.setdefault(sale_id, []).append((qty, name, unit_price))
+        return grouped
 
     async def get_all(
         self,

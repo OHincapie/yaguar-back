@@ -6,7 +6,13 @@ from src.domains.ledger.repository import LedgerRepository
 from src.domains.products.repository import ProductRepository
 from src.domains.purchases.models import Purchase, PurchaseLine, PurchaseStatus
 from src.domains.purchases.repository import PurchaseRepository
-from src.domains.purchases.schemas import PurchaseCreate, PurchaseStatusUpdate, PurchaseUpdate
+from src.domains.purchases.schemas import (
+    PurchaseCreate,
+    PurchaseItemBrief,
+    PurchaseRead,
+    PurchaseStatusUpdate,
+    PurchaseUpdate,
+)
 from src.shared.middleware.errors import BusinessError, NotFoundError
 
 # Only a received purchase has had a real-world effect (stock added, a
@@ -33,7 +39,23 @@ class PurchaseService:
 
     async def list_purchases(self, company_id: str, status, supplier_id: str | None, page: int, page_size: int):
         offset = (page - 1) * page_size
-        return await self.repo.get_all(company_id, status=status, supplier_id=supplier_id, offset=offset, limit=page_size)
+        purchases, total = await self.repo.get_all(
+            company_id, status=status, supplier_id=supplier_id, offset=offset, limit=page_size
+        )
+        # Attach each order's items so a row can expand into its summary
+        # without a second request. One extra query for the whole page.
+        grouped = await self.repo.get_lines_for_purchases([p.id for p in purchases])
+        enriched = [
+            PurchaseRead(
+                **{f: getattr(purchase, f) for f in PurchaseRead.model_fields if f != "items"},
+                items=[
+                    PurchaseItemBrief(qty=qty, name=name, unit_cost=unit_cost)
+                    for qty, name, unit_cost in grouped.get(purchase.id, [])
+                ],
+            )
+            for purchase in purchases
+        ]
+        return enriched, total
 
     async def get_purchase(self, company_id: str, code: str) -> Purchase:
         purchase = await self.repo.get_by_code(company_id, code)

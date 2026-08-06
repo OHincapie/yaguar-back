@@ -73,6 +73,15 @@ class SaleUpdate(BaseModel):
     payments: list[PaymentLine] | None = None
 
 
+class SaleItemBrief(BaseModel):
+    """Just enough of a sale line to summarize the sale in a list row
+    ("2 Colágeno, 1 Melena de León") without fetching the full detail."""
+
+    qty: float
+    name: str
+    unit_price: float
+
+
 class SaleRead(BaseModel):
     id: str
     code: str
@@ -86,6 +95,9 @@ class SaleRead(BaseModel):
     status: SaleStatus
     notes: str | None
     due_date: datetime | None = None
+    # Populated on the list endpoint only; empty elsewhere (create/update
+    # return the sale before anyone needs its summary).
+    items: list[SaleItemBrief] = []
 
     model_config = {"from_attributes": True}
 

@@ -43,6 +43,15 @@ class PurchaseUpdate(BaseModel):
     lines: list[PurchaseLineCreate] | None = None
 
 
+class PurchaseItemBrief(BaseModel):
+    """Just enough of a purchase line to summarize the order in a list row,
+    so expanding one doesn't need a second request."""
+
+    qty: float
+    name: str
+    unit_cost: float
+
+
 class PurchaseRead(BaseModel):
     id: str
     code: str
@@ -52,5 +61,7 @@ class PurchaseRead(BaseModel):
     status: PurchaseStatus
     eta: Date | None
     notes: str | None
+    # Populated on the list endpoint only.
+    items: list[PurchaseItemBrief] = []
 
     model_config = {"from_attributes": True}

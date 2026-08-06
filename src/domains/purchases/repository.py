@@ -1,12 +1,32 @@
 from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from src.domains.products.models import Product
 from src.domains.purchases.models import Purchase, PurchaseLine, PurchaseStatus
 
 
 class PurchaseRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
+
+    async def get_lines_for_purchases(
+        self, purchase_ids: list[str]
+    ) -> dict[str, list[tuple[float, str, float]]]:
+        """(qty, product name, unit cost) per purchase, for the whole page in
+        ONE query — feeds the expandable summary on the Compras list without a
+        round-trip per row."""
+        if not purchase_ids:
+            return {}
+        result = await self.session.exec(  # type: ignore
+            select(PurchaseLine.purchase_id, PurchaseLine.qty, Product.name, PurchaseLine.unit_cost)
+            .join(Product, Product.id == PurchaseLine.product_id)  # type: ignore[arg-type]
+            .where(PurchaseLine.purchase_id.in_(purchase_ids))  # type: ignore[attr-defined]
+            .order_by(PurchaseLine.id)  # type: ignore[arg-type]
+        )
+        grouped: dict[str, list[tuple[float, str, float]]] = {}
+        for purchase_id, qty, name, unit_cost in result.all():
+            grouped.setdefault(purchase_id, []).append((qty, name, unit_cost))
+        return grouped
 
     async def get_all(
         self,
