@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy.exc import IntegrityError
+
 from src.domains.accounts.repository import AccountsRepository
 from src.domains.agents.models import PendingAgentTrigger
 from src.domains.agents.repository import AgentRepository
@@ -51,7 +53,9 @@ class SaleService:
         self.customer_repo = customer_repo
         self.agent_repo = agent_repo
 
-    async def _adjust_saldo(self, company_id: str, customer_id: str | None, delta: float) -> None:
+    async def _adjust_saldo(
+        self, company_id: str, customer_id: str | None, delta: float, *, commit: bool = True
+    ) -> None:
         """Keeps Customer.saldo (outstanding receivable) in sync. No-op for
         walk-in sales and near-zero deltas. Clamps at 0 from below so a
         legacy/seeded saldo that never matched real sales can't go negative."""
@@ -61,7 +65,7 @@ class SaleService:
         if customer is None:
             return
         customer.saldo = round(max(0.0, customer.saldo + delta), 2)
-        await self.customer_repo.update(customer)
+        await self.customer_repo.update(customer, commit=commit)
 
     async def _abonado(self, sale_id: str) -> float:
         return round(sum(a.amount for a in await self.repo.get_abonos(sale_id)), 2)
@@ -176,81 +180,103 @@ class SaleService:
         return resolved, display, status
 
     async def create_sale(self, company_id: str, data: SaleCreate) -> Sale:
-        count = await self.repo.count_for_company(company_id)
-        code = f"V-{count + 1:05d}"
+        try:
+            # The advisory lock acquired here is held until the single commit
+            # below, so two checkouts for one company cannot reserve the same
+            # human-facing code.
+            code = await self.repo.reserve_next_code(company_id)
 
-        subtotal, discount_amount, tax_amount, total = await self._compute_amounts(company_id, data.lines)
-        _methods, payment_display, status = await self._resolve_payments(company_id, data.payments, total, data.customer_id)
-
-        # A credit sale gets a collection deadline: explicit from the caller,
-        # or the company's default term. Cash/card/transfer sales carry none.
-        due_date = None
-        if status == SaleStatus.PENDIENTE:
-            if data.due_date is not None:
-                due_date = data.due_date
-            else:
-                company = await self.accounts_repo.get_company(company_id)
-                assert company is not None
-                due_date = datetime.now(timezone.utc) + timedelta(days=company.credit_days)
-
-        sale = Sale(
-            company_id=company_id,
-            code=code,
-            customer_id=data.customer_id,
-            subtotal=subtotal,
-            discount_amount=discount_amount,
-            tax_amount=tax_amount,
-            total=total,
-            payment_method=payment_display,
-            status=status,
-            notes=data.notes,
-            due_date=due_date,
-        )
-
-        # Products this sale pushed to/below their minimum — leave a
-        # breadcrumb so Inti reacts on the next Agentes page load instead of
-        # waiting for the daily sweep. The LLM work happens later, off the
-        # checkout path (see PendingAgentTrigger).
-        for line_data in data.lines:
-            level = await self.inventory_service.apply_sale(
-                company_id=company_id,
-                product_id=line_data.product_id,
-                qty=line_data.qty,
-                sale_id=sale.id,
+            subtotal, discount_amount, tax_amount, total = await self._compute_amounts(company_id, data.lines)
+            _methods, payment_display, status = await self._resolve_payments(
+                company_id, data.payments, total, data.customer_id
             )
-            if level is not None and level.min_stock and level.stock_qty <= level.min_stock:
-                # level.product_id is the level that actually dropped — for a
-                # kit that's the depleted component, not the kit itself.
-                await self.agent_repo.create_trigger(
-                    PendingAgentTrigger(
-                        company_id=company_id,
-                        agent_key="stock",
-                        context={"product_id": level.product_id, "reason": "sale_below_min", "sale_code": code},
-                    )
+
+            # A credit sale gets a collection deadline: explicit from the caller,
+            # or the company's default term. Cash/card/transfer sales carry none.
+            due_date = None
+            if status == SaleStatus.PENDIENTE:
+                if data.due_date is not None:
+                    due_date = data.due_date
+                else:
+                    company = await self.accounts_repo.get_company(company_id)
+                    assert company is not None
+                    due_date = datetime.now(timezone.utc) + timedelta(days=company.credit_days)
+
+            sale = Sale(
+                company_id=company_id,
+                code=code,
+                customer_id=data.customer_id,
+                subtotal=subtotal,
+                discount_amount=discount_amount,
+                tax_amount=tax_amount,
+                total=total,
+                payment_method=payment_display,
+                status=status,
+                notes=data.notes,
+                due_date=due_date,
+            )
+            lines = [SaleLine(sale_id=sale.id, **line.model_dump()) for line in data.lines]
+            payments = [
+                SalePayment(sale_id=sale.id, payment_method_id=p.payment_method_id, amount=p.amount)
+                for p in data.payments
+            ]
+
+            # Flush the sale and its children first, then stage inventory and
+            # accounting changes. Nothing participating in checkout commits
+            # until the final commit succeeds.
+            sale = await self.repo.create(sale, lines, payments, commit=False)
+
+            # Products this sale pushed to/below their minimum — leave a
+            # breadcrumb so Inti reacts on the next Agentes page load instead of
+            # waiting for the daily sweep. The LLM work happens later, off the
+            # checkout path (see PendingAgentTrigger).
+            for line_data in data.lines:
+                level = await self.inventory_service.apply_sale(
+                    company_id=company_id,
+                    product_id=line_data.product_id,
+                    qty=line_data.qty,
+                    sale_id=sale.id,
+                    commit=False,
                 )
+                if level is not None and level.min_stock and level.stock_qty <= level.min_stock:
+                    # level.product_id is the level that actually dropped — for
+                    # a kit that's the depleted component, not the kit itself.
+                    await self.agent_repo.create_trigger(
+                        PendingAgentTrigger(
+                            company_id=company_id,
+                            agent_key="stock",
+                            context={"product_id": level.product_id, "reason": "sale_below_min", "sale_code": code},
+                        ),
+                        commit=False,
+                    )
 
-        lines = [SaleLine(sale_id=sale.id, **line.model_dump()) for line in data.lines]
-        payments = [SalePayment(sale_id=sale.id, payment_method_id=p.payment_method_id, amount=p.amount) for p in data.payments]
-        sale = await self.repo.create(sale, lines, payments)
-
-        await self.ledger_repo.create(
-            LedgerEntry(
-                company_id=company_id,
-                concept=f"Venta {sale.code}",
-                category=LedgerCategory.VENTAS,
-                credit=total,
-                type=LedgerType.IN,
-                reference_id=sale.id,
-                reference_type="sale",
+            await self.ledger_repo.create(
+                LedgerEntry(
+                    company_id=company_id,
+                    concept=f"Venta {sale.code}",
+                    category=LedgerCategory.VENTAS,
+                    credit=total,
+                    type=LedgerType.IN,
+                    reference_id=sale.id,
+                    reference_type="sale",
+                ),
+                commit=False,
             )
-        )
 
-        # Income is recognized in the ledger at creation regardless of
-        # credit (flat-book behavior, unchanged); the receivable side lives
-        # on Customer.saldo until abonos cover it.
-        if sale.status == SaleStatus.PENDIENTE:
-            await self._adjust_saldo(company_id, sale.customer_id, +total)
-        return sale
+            # Income is recognized in the ledger at creation regardless of
+            # credit (flat-book behavior, unchanged); the receivable side lives
+            # on Customer.saldo until abonos cover it.
+            if sale.status == SaleStatus.PENDIENTE:
+                await self._adjust_saldo(company_id, sale.customer_id, +total, commit=False)
+            return await self.repo.commit(sale)
+        except IntegrityError as exc:
+            await self.repo.rollback()
+            if "uq_sales_company_code" in str(exc):
+                raise ConflictError("Sale code already exists; please retry the checkout") from exc
+            raise
+        except Exception:
+            await self.repo.rollback()
+            raise
 
     async def register_abono(self, company_id: str, code: str, data: AbonoCreate) -> AbonoResult:
         sale = await self.get_sale(company_id, code)

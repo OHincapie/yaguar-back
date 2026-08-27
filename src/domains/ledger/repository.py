@@ -51,10 +51,13 @@ class LedgerRepository:
         result = await self.session.exec(query.order_by(LedgerEntry.date.desc(), LedgerEntry.id).offset(offset).limit(limit))  # type: ignore
         return result.all(), total
 
-    async def create(self, entry: LedgerEntry) -> LedgerEntry:
+    async def create(self, entry: LedgerEntry, *, commit: bool = True) -> LedgerEntry:
         self.session.add(entry)
-        await self.session.commit()
-        await self.session.refresh(entry)
+        if commit:
+            await self.session.commit()
+            await self.session.refresh(entry)
+        else:
+            await self.session.flush()
         return entry
 
     async def get_by_reference(self, company_id: str, reference_id: str, reference_type: str) -> LedgerEntry | None:

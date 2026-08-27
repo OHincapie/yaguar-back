@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from sqlalchemy import Integer, cast, text
 from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -75,19 +76,57 @@ class SaleRepository:
         )
         return int(result.one())
 
+    async def reserve_next_code(self, company_id: str) -> str:
+        """Reserve the next human-facing sale code for one company.
+
+        A transaction-level advisory lock serializes checkout requests for the
+        same company until the caller commits or rolls back. The numeric
+        maximum is used instead of row count so deleting a sale cannot make an
+        existing code available for accidental reuse.
+        """
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:company_id, 0))"),
+            {"company_id": company_id},
+        )
+        result = await self.session.exec(  # type: ignore
+            select(func.max(cast(func.substring(Sale.code, 3), Integer))).where(
+                Sale.company_id == company_id,
+                Sale.code.like("V-%"),  # type: ignore[attr-defined]
+            )
+        )
+        highest = result.one()
+        return f"V-{int(highest or 0) + 1:05d}"
+
     async def get_lines(self, sale_id: str) -> list[SaleLine]:
         result = await self.session.exec(select(SaleLine).where(SaleLine.sale_id == sale_id))  # type: ignore
         return result.all()
 
-    async def create(self, sale: Sale, lines: list[SaleLine], payments: list[SalePayment]) -> Sale:
+    async def create(
+        self,
+        sale: Sale,
+        lines: list[SaleLine],
+        payments: list[SalePayment],
+        *,
+        commit: bool = True,
+    ) -> Sale:
         self.session.add(sale)
         for line in lines:
             self.session.add(line)
         for payment in payments:
             self.session.add(payment)
+        if commit:
+            await self.commit(sale)
+        else:
+            await self.session.flush()
+        return sale
+
+    async def commit(self, sale: Sale) -> Sale:
         await self.session.commit()
         await self.session.refresh(sale)
         return sale
+
+    async def rollback(self) -> None:
+        await self.session.rollback()
 
     async def update(self, sale: Sale) -> Sale:
         self.session.add(sale)

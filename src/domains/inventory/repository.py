@@ -35,7 +35,13 @@ class InventoryRepository:
         return result.all(), total
 
     async def upsert_level(
-        self, company_id: str, product_id: str, qty_delta: float, min_stock: float | None = None
+        self,
+        company_id: str,
+        product_id: str,
+        qty_delta: float,
+        min_stock: float | None = None,
+        *,
+        commit: bool = True,
     ) -> InventoryLevel:
         level = await self.get_level(company_id, product_id)
         if level is None:
@@ -48,8 +54,11 @@ class InventoryRepository:
                 level.min_stock = min_stock
             level.last_updated = datetime.now(timezone.utc)
         self.session.add(level)
-        await self.session.commit()
-        await self.session.refresh(level)
+        if commit:
+            await self.session.commit()
+            await self.session.refresh(level)
+        else:
+            await self.session.flush()
         return level
 
     async def set_level(
@@ -79,6 +88,8 @@ class InventoryRepository:
         reference_id: str | None = None,
         reference_type: str | None = None,
         notes: str | None = None,
+        *,
+        commit: bool = True,
     ) -> InventoryMovement:
         movement = InventoryMovement(
             company_id=company_id,
@@ -90,8 +101,11 @@ class InventoryRepository:
             notes=notes,
         )
         self.session.add(movement)
-        await self.session.commit()
-        await self.session.refresh(movement)
+        if commit:
+            await self.session.commit()
+            await self.session.refresh(movement)
+        else:
+            await self.session.flush()
         return movement
 
     async def get_movements(

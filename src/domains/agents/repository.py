@@ -69,10 +69,13 @@ class AgentRepository:
 
     # --- triggers -------------------------------------------------------
 
-    async def create_trigger(self, trigger: PendingAgentTrigger) -> PendingAgentTrigger:
+    async def create_trigger(self, trigger: PendingAgentTrigger, *, commit: bool = True) -> PendingAgentTrigger:
         self.session.add(trigger)
-        await self.session.commit()
-        await self.session.refresh(trigger)
+        if commit:
+            await self.session.commit()
+            await self.session.refresh(trigger)
+        else:
+            await self.session.flush()
         return trigger
 
     async def get_company_unprocessed_triggers(self, company_id: str) -> list[PendingAgentTrigger]:
