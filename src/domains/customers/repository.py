@@ -53,10 +53,13 @@ class CustomerRepository:
         await self.session.refresh(customer)
         return customer
 
-    async def update(self, customer: Customer) -> Customer:
+    async def update(self, customer: Customer, *, commit: bool = True) -> Customer:
         self.session.add(customer)
-        await self.session.commit()
-        await self.session.refresh(customer)
+        if commit:
+            await self.session.commit()
+            await self.session.refresh(customer)
+        else:
+            await self.session.flush()
         return customer
 
     async def delete(self, customer: Customer) -> None:

@@ -87,7 +87,15 @@ class InventoryService:
             )
         return await self.repo.upsert_level(company_id, product_id, qty, min_stock=min_stock)
 
-    async def apply_sale(self, company_id: str, product_id: str, qty: float, sale_id: str) -> InventoryLevel | None:
+    async def apply_sale(
+        self,
+        company_id: str,
+        product_id: str,
+        qty: float,
+        sale_id: str,
+        *,
+        commit: bool = True,
+    ) -> InventoryLevel | None:
         product = await self.product_repo.get_by_id(company_id, product_id)
         if product and product.is_bundle:
             components = await self.product_repo.get_components(company_id, product_id)
@@ -116,8 +124,11 @@ class InventoryService:
                     qty=-required,
                     reference_id=sale_id,
                     reference_type="sale",
+                    commit=commit,
                 )
-                last_level = await self.repo.upsert_level(company_id, comp.component_product_id, -required)
+                last_level = await self.repo.upsert_level(
+                    company_id, comp.component_product_id, -required, commit=commit
+                )
             return last_level
 
         level = await self.repo.get_level(company_id, product_id)
@@ -131,8 +142,9 @@ class InventoryService:
             qty=-qty,
             reference_id=sale_id,
             reference_type="sale",
+            commit=commit,
         )
-        return await self.repo.upsert_level(company_id, product_id, -qty)
+        return await self.repo.upsert_level(company_id, product_id, -qty, commit=commit)
 
     async def reverse_sale(self, company_id: str, product_id: str, qty: float, sale_id: str) -> None:
         """Undo a previously-applied sale line — used when editing a sale's
